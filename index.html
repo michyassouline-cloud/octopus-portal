@@ -1504,57 +1504,71 @@ function parseSheet(wb, sheetName, version) {
     const r = rows[i];
     const cv = col => { const v = cellVal(i, col); return v !== '' ? v : (r[col] || ''); };
     const _v26=version==='2026';
-    const _isRel=sheetName.toLowerCase()==='released';
-    // 2026: all sheets share same column layout now
-    // Updates & Released: paid=23, checkType=24, checkDate=25, releaseDate=26, decl=30, fileNum=21
-    // palIsr=4, consignee=5 (moved to front for all sheets)
-    const _PAID =_v26?23:18;
-    const _CTYP =_v26?24:19;
-    const _CDAT =_v26?25:20;
-    const _REL  =_v26?26:21;
-    const _DECL =_v26?30:25;
-    const _FILE =_v26?21:(_isRel?12:13);
-    const _PI   =_v26?4:(_isRel?-1:15);
-    const _CO   =_v26?5:16;
-    const custId = String(cv(2)).trim();
+
+    // 2026 ALL sheets (Updates + Released) have new extended layout
+    // 2025 ALL sheets (Updates + Released) have old layout
+    // 2026: No=0,Office=1,Importer=2,Shipper=3,PalIsr=4,Consignee=5,CnCount=6,Goods=7
+    //       CnNum=8,BLNum=9,Vessel=10,ShipCo=11,ETD=12,Month=13,ETA=14,NewETA=15
+    //       Invoice=16,BL=17,Office=18,CnNum2=19,SentCustoms=20,FileNum=21
+    //       PaidCustoms=22,Paid=23,Type=24,Date=25,Release=26,Remarks=27,Money=28,Recv=29,Decl=30
+    // 2025: Importer=0,Office=1,CnCount=2,Goods=3,ETA=4,NewETA=5,Month=6
+    //       Invoice=7,BL=8,CnNum=9,ShipCo=10,Office=11,FileNum=12,SentCustoms=13
+    //       Shipper=14,PalIsr=15,Consignee=16,PaidCustoms=17,Paid=18
+    //       Type=19,Date=20,Release=21,Remarks=22,Money=23,Recv=24,Decl=25
+
+    const _CUSTID= _v26 ? 2  : 0;
+    const _CNTS  = _v26 ? 6  : 2;
+    const _GOODS = _v26 ? 7  : 3;
+    const _ETAOR = _v26 ? 14 : 4;
+    const _ETANW = _v26 ? 15 : 5;
+    const _ETD   = _v26 ? 12 : -1;
+    const _CNNUM = _v26 ? 8  : 9;
+    const _CNSEC = _v26 ? 19 : -1;
+    const _BLNOT = _v26 ? 17 : 8;
+    const _PI    = _v26 ? 4  : 15;
+    const _CO    = _v26 ? 5  : 16;
+    const _FILE  = _v26 ? 21 : 12;
+    const _PAID  = _v26 ? 23 : 18;
+    const _CTYP  = _v26 ? 24 : 19;
+    const _CDAT  = _v26 ? 25 : 20;
+    const _REL   = _v26 ? 26 : 21;
+    const _DECL  = _v26 ? 30 : 25;
+
+    const custId = String(cv(_CUSTID)).trim();
     if (!custId) {
-      if (!String(cv(8)).trim()) { last = { etaOrig:'', etaNew:'', etd:'', paid:'', paidDate:'', checkType:'', checkDate:'', releaseDate:'', declNum:'' }; }
+      if (!String(cv(_CNNUM)).trim()) { last = { etaOrig:'', etaNew:'', etd:'', paid:'', paidDate:'', checkType:'', checkDate:'', releaseDate:'', declNum:'' }; }
       continue;
     }
-    const etaOrig=formatDate(cv(14)),etaNew=formatDate(cv(15));
-    const etd=_v26?formatDate(cv(12)):'';
+    const etaOrig=formatDate(cv(_ETAOR)),etaNew=formatDate(cv(_ETANW));
+    const etd=_ETD>=0?formatDate(cv(_ETD)):'';
     const paidRaw=String(cv(_PAID));
-    // paid can be 'yes' OR a date string (in Released sheet)
-    // Paid = col X: has a date → paid; empty → not paid
     const paid=paidRaw&&paidRaw.trim()!==''?'yes':'no';
     const paidDate=paidRaw&&paidRaw.trim()!==''?formatDate(paidRaw):'';
     const checkType=String(cv(_CTYP)),checkDate=formatDate(cv(_CDAT));
     const releaseDate=formatDate(cv(_REL)),declNum=String(cv(_DECL));
     const fileNum=String(cv(_FILE)).trim();
     if (fileNum) last.fileNum = fileNum;
-    // Only carry forward ETA and file number — NOT payment/release/check info
-    // Those must come from the actual cell or merge, not bleed across shipments
     if (etaOrig)  last.etaOrig  = etaOrig;
     if (etaNew)   last.etaNew   = etaNew;
     if (etd)      last.etd      = etd;
     if (fileNum)  last.fileNum  = fileNum;
 
-    // Container number: primary col I (8), secondary col T (19) — combine both
-    const cnPrimary  = String(cv(8)).trim();
-    const cnSecondary= String(cv(19)).trim();
+    // Container number: primary col, optional secondary col
+    const cnPrimary  = String(cv(_CNNUM)).trim();
+    const cnSecondary= _CNSEC>=0 ? String(cv(_CNSEC)).trim() : '';
     const containerNum = cnPrimary || cnSecondary;
 
     raw.push({
       partner:      String(cv(1)),
       customerId:   custId,
-      containers:   String(cv(6)),
-      goods:        String(cv(7)),
+      containers:   String(cv(_CNTS)),
+      goods:        String(cv(_GOODS)),
       etaOriginal:  etaOrig  || last.etaOrig,
       etaNew:       etaNew   || last.etaNew,
       etd:          etd      || last.etd,
       fileNum:      fileNum  || last.fileNum,
       containerNums: containerNum,
-      blNote:       (()=>{ const v=String(cv(17)||'').trim(); return (v&&v.toLowerCase()!=='have')?v:''; })(),
+      blNote:       (()=>{ const v=String(cv(_BLNOT)||'').trim(); return (v&&v.toLowerCase()!=='have')?v:''; })(),
       palIsr:       String(cv(_PI)).trim(),
       consignee:    String(cv(_CO)).trim(),
       paid:         paid,
@@ -1668,23 +1682,42 @@ function parsePartnerSheet(wb, sheetName, version) {
       return v !== '' ? v : (rows[i][col] || '');
     };
 
-    const custId   = String(cv(2)).trim();
-    // Container number: primary col I (8), secondary col T (19) — same as Updates/Released
-    const cnPrimary   = String(cv(8)).trim();
-    const cnSecondary = String(cv(19)).trim();
+    const custId   = String(cv(_PCID)).trim();
+    const cnPrimary   = String(cv(_PCNUM)).trim();
+    const cnSecondary = _PCSC>=0 ? String(cv(_PCSC)).trim() : '';
     const containerNum = cnPrimary || cnSecondary;
 
     const _p26=version==='2026';
-    // 2026 partner sheet (Michy/Deia/Ayman) new column layout:
-    //   2=CustomerID, 4=Pal/Isr, 5=FinalConsignee, 6=ContainerCount
-    //   7=Goods, 8=ContainerNumber, 14=ArrivalDate, 15=NewArrivalDate
-    //   17=BL, 19=ContainerNumber(dup), 21=FileNumber
-    //   23=SoldTo, 24=Paid, 25=Profit, 26=PaidMichy
-    //   27=AdditionalCost, 28=AdditionalCostReason, 30=DeclNo
-    const _PFN=_p26?21:13,_PPD=_p26?24:20,_PDN=_p26?30:26,_PPI=_p26?4:16,_PCO=_p26?5:17;
-    const _PSOLD=_p26?23:19,_PADD=_p26?27:23,_PRSN=_p26?28:24,_PPROF=_p26?25:21;
+    // 2026 partner (Michy/Deia/Ayman): same new layout as 2026 Updates
+    //   No=0,Office=1,Importer=2,Shipper=3,PalIsr=4,Consignee=5,CnCount=6,Goods=7
+    //   CnNum=8,BLNum=9,Vessel=10,ShipCo=11,ETD=12,Month=13,ETA=14,NewETA=15
+    //   Invoice=16,BL=17,Office=18,CnNum2=19,SentCustoms=20,FileNum=21
+    //   SendInvoices=22,Sold=23,Paid=24,Profit=25,PaidMichy=26,AddCost=27,AddReason=28,Remarks=29,Decl=30
+    // 2025 partner (Michy/Deia/Ayman): old layout
+    //   No=0,Office=1,Importer=2,CnCount=3,Goods=4,ETA=5,NewETA=6,Month=7
+    //   Invoice=8,BL=9,CnNum=10,ShipCo=11,Office=12,FileNum=13,SentCustoms=14
+    //   Shipper=15,PalIsr=16,Consignee=17,SendInvoices=18,Sold=19,Paid=20
+    //   Profit=21,PaidMichy=22,AddCost=23,AddReason=24,Remarks=25,Decl=26
+    const _PCID  = 2;
+    const _PCNTS = _p26 ? 6  : 3;
+    const _PGOOD = _p26 ? 7  : 4;
+    const _PETAO = _p26 ? 14 : 5;
+    const _PETNN = _p26 ? 15 : 6;
+    const _PETD  = _p26 ? 12 : -1;
+    const _PCNUM = _p26 ? 8  : 10;
+    const _PCSC  = _p26 ? 19 : -1;
+    const _PBL   = _p26 ? 17 : 9;
+    const _PPI   = _p26 ? 4  : 16;
+    const _PCO   = _p26 ? 5  : 17;
+    const _PFN   = _p26 ? 21 : 13;
+    const _PPD   = _p26 ? 24 : 20;
+    const _PSOLD = _p26 ? 23 : 19;
+    const _PPROF = _p26 ? 25 : 21;
+    const _PADD  = _p26 ? 27 : 23;
+    const _PRSN  = _p26 ? 28 : 24;
+    const _PDN   = _p26 ? 30 : 26;
     const rowFileNum = String(cv(_PFN)).trim();
-    const rowGoods   = String(cv(7)).trim();
+    const rowGoods   = String(cv(_PGOOD)).trim();
 
     // Determine if this row starts a NEW shipment or is a continuation of the current one
     const isContinuation = currentShipment && containerNum && (
@@ -1708,11 +1741,11 @@ function parsePartnerSheet(wb, sheetName, version) {
     } else if (custId) {
       // New shipment row
       currentShipment = {
-        partner:String(cv(1)),customerId:custId,containers:String(cv(_p26?6:3)),
+        partner:String(cv(1)),customerId:custId,containers:String(cv(_PCNTS)),
         goods:        rowGoods || (currentShipment && currentShipment.customerId === custId ? currentShipment.goods : ''),
-        blNote:       (()=>{ const v=String(cv(_p26?17:9)||'').trim(); return (v&&v.toLowerCase()!=='have')?v:''; })(),
-        etaOriginal:formatDate(cv(_p26?14:5)),etaNew:formatDate(cv(_p26?15:6)),
-        etd:         _p26?formatDate(cv(12)):'',
+        blNote:       (()=>{ const v=String(cv(_PBL)||'').trim(); return (v&&v.toLowerCase()!=='have')?v:''; })(),
+        etaOriginal:formatDate(cv(_PETAO)),etaNew:formatDate(cv(_PETNN)),
+        etd:         _PETD>=0?formatDate(cv(_PETD)):'',
         fileNum:rowFileNum,containerNums:containerNum,
         paid:String(cv(_PPD)).trim().toLowerCase()==='yes'?'yes':'no',
         paidDate:'',checkType:'',checkDate:'',releaseDate:'',
