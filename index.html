@@ -1486,7 +1486,16 @@ function parseWorkbooks(wb2025,wb2026){
   const dedupedUpd = allUpd.filter(s => !s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).some(c=>relContainers.has(c)));
   // Remove from parPast if container is already in updates (updates wins over partner-past)
   const dedupedParPast = parPast.filter(s => !s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).some(c=>updContainers.has(c)));
-  const updates=[...dedupedUpd,...parFut],released=[...allRel,...dedupedParPast];
+  // Final dedup within released: same containerNums = keep only one (released sheet wins over partner)
+  const relSeenKeys = new Set();
+  const dedupedRel = [];
+  // allRel (from Released sheet) goes first so it wins over partner entries
+  for (const s of [...allRel, ...dedupedParPast]) {
+    const nums = s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).sort().join(',');
+    // Dedup by container numbers alone — same container = same physical shipment
+    if (!relSeenKeys.has(nums)) { relSeenKeys.add(nums); dedupedRel.push(s); }
+  }
+  const updates=[...dedupedUpd,...parFut],released=dedupedRel;
   window._lastParsed=updates;state.shipments={updates,released};
   state.lastSync=new Date().toISOString();saveState();
   sbSaveShipments(updates,released).then(ok=>{showToast(ok?'Data loaded & synced! ✓':'Data loaded (cloud sync failed)','success');});
