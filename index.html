@@ -1313,12 +1313,11 @@ function enterApp() {
   // Restore this user's language preference
   loadUserLang(state.currentUser);
 
-  // Load shipment data from Supabase cloud
+  // Load shipment data from Supabase cloud, then also fetch fresh if drive links exist
   if (!state.isAdmin) {
     sbGetShipments().then(data => {
       if (data) {
         state.shipments = data;
-        // Re-apply consignee enrichment from partner sheets if available
         applyConsigneeEnrichment(state.shipments.updates, state.shipments.released);
         if (state.isMaster) renderMasterShipments();
         else renderCustomerShipments();
@@ -1348,10 +1347,12 @@ function enterApp() {
     renderCustomerShipments();
   }
 
-  // Auto refresh every 2 hours — also fetch immediately on login
+  // Auto refresh every 2 hours — fetch immediately on login for admin
   if (state.syncInterval) clearInterval(state.syncInterval);
   if (state.driveLink || state.driveLink2026) {
-    fetchFromDrive(); // immediate fetch on every login
+    if (state.isAdmin) {
+      fetchFromDrive(); // immediate fetch on admin login
+    }
     state.syncInterval = setInterval(() => fetchFromDrive(), 2 * 60 * 60 * 1000);
   }
 }
@@ -1391,21 +1392,33 @@ function applyConsigneeEnrichment(updates, released) {
 }
 
 function parseWorkbooks(wb2025,wb2026){
+  try {
   const fs=(wb,n)=>wb?wb.SheetNames.find(s=>s.toLowerCase()===n.toLowerCase()):null;
-  const upd25=fs(wb2025,'updates')?parseSheet(wb2025,fs(wb2025,'updates'),'2025'):[];
-  const rel25=fs(wb2025,'released')?parseSheet(wb2025,fs(wb2025,'released'),'2025'):[];
-  const upd26=fs(wb2026,'updates')?parseSheet(wb2026,fs(wb2026,'updates'),'2026'):[];
-  const rel26=fs(wb2026,'released')?parseSheet(wb2026,fs(wb2026,'released'),'2026'):[];
+
+  // If a workbook is null, keep whatever was previously parsed for that year
+  // This prevents a failed GAS fetch from wiping good manually-uploaded data
+  const upd25=fs(wb2025,'updates')?parseSheet(wb2025,fs(wb2025,'updates'),'2025'):(wb2025?[]:(window._lastParsed25upd||[]));
+  const rel25=fs(wb2025,'released')?parseSheet(wb2025,fs(wb2025,'released'),'2025'):(wb2025?[]:(window._lastParsed25rel||[]));
+  const upd26=fs(wb2026,'updates')?parseSheet(wb2026,fs(wb2026,'updates'),'2026'):(wb2026?[]:(window._lastParsed26upd||[]));
+  const rel26=fs(wb2026,'released')?parseSheet(wb2026,fs(wb2026,'released'),'2026'):(wb2026?[]:(window._lastParsed26rel||[]));
+  // Save per-year parsed data for preservation across partial refreshes
+  if(wb2025){window._lastParsed25upd=upd25;window._lastParsed25rel=rel25;}
+  if(wb2026){window._lastParsed26upd=upd26;window._lastParsed26rel=rel26;}
+
   const p25=[],p26=[];
   for(const sn of['michy','deia','ayman']){
     const s25=fs(wb2025,sn),s26=fs(wb2026,sn);
     if(s25)p25.push(...parsePartnerSheet(wb2025,s25,'2025'));
     if(s26)p26.push(...parsePartnerSheet(wb2026,s26,'2026'));
   }
+  // Preserve partner data from previous parse if workbook not loaded
+  if(!wb2025 && window._lastParsedP25) p25.push(...window._lastParsedP25);
+  if(!wb2026 && window._lastParsedP26) p26.push(...window._lastParsedP26);
+  if(wb2025) window._lastParsedP25=[...p25];
+  if(wb2026) window._lastParsedP26=[...p26];
   const allUpd=[...upd25,...upd26],allRel=[...rel25,...rel26],allPar=[...p25,...p26];
 
   // Build a cost lookup map: containerNum -> {sold, addCost, addReason}
-  // from ALL partner sheet rows (including released ones)
   const costMap = {};
   for (const s of allPar) {
     const nums = s.containerNums.split(/[,\n;]+/).map(x=>x.trim().toUpperCase()).filter(Boolean);
@@ -1413,9 +1426,8 @@ function parseWorkbooks(wb2025,wb2026){
       if (!costMap[n]) costMap[n] = { sold: s.sold||'', addCost: s.addCost||'', addReason: s.addReason||'', profit: s.profit||'' };
     }
   }
-  // Enrich updates and released shipments with cost data
   function enrichCost(shipment) {
-    if (shipment.sold || shipment.addCost) return; // already has cost data
+    if (shipment.sold || shipment.addCost) return;
     const nums = shipment.containerNums.split(/[,\n;]+/).map(x=>x.trim().toUpperCase()).filter(Boolean);
     for (const n of nums) {
       if (costMap[n]) {
@@ -1439,7 +1451,6 @@ function parseWorkbooks(wb2025,wb2026){
     const e=d?new Date(+d[3],+d[2]-1,+d[1]):new Date(es);
     return e&&!isNaN(e)&&e>=today;
   }
-  // Always use partner sheets (Michy/Deia/Ayman) as source of truth for consignee & palIsr
   state._parByContainer = {};
   allPar.forEach(p => {
     p.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).forEach(c => {
@@ -1449,13 +1460,24 @@ function parseWorkbooks(wb2025,wb2026){
     });
   });
   applyConsigneeEnrichment(allUpd, allRel);
-  const updates=[...allUpd,...allPar.filter(isFut)],released=allRel;
+  // Partner future shipments → updates; partner past/no-date → released (not dropped)
+  const parFut = allPar.filter(isFut);
+  const parPast = allPar.filter(s => !isFut(s));
+  const updates=[...allUpd,...parFut],released=[...allRel,...parPast];
   window._lastParsed=updates;state.shipments={updates,released};
   state.lastSync=new Date().toISOString();saveState();
-  sbSaveShipments(updates,released).then(ok=>{showToast(ok?'Data loaded & synced!':'Data loaded (sync failed)','success');});
+  sbSaveShipments(updates,released).then(ok=>{showToast(ok?'Data loaded & synced! ✓':'Data loaded (cloud sync failed)','success');});
+  updateDriveStatus2(wb2025?'connected':'error','2025');
+  updateDriveStatus2(wb2026?'connected':'error','2026');
   renderDriveStatus();
   if(!state.isAdmin&&!state.isMaster)renderCustomerShipments();
   if(state.isMaster)renderMasterShipments();
+  } catch(err) {
+    console.error('parseWorkbooks error:', err);
+    showToast('Parse error: ' + err.message, 'error');
+    updateDriveStatus2('error','2025');
+    updateDriveStatus2('error','2026');
+  }
 }
 function parseWorkbook(wb){parseWorkbooks(wb,null);}
 
@@ -1505,18 +1527,25 @@ function parseSheet(wb, sheetName, version) {
     const cv = col => { const v = cellVal(i, col); return v !== '' ? v : (r[col] || ''); };
     const _v26=version==='2026';
 
-    // 2026 ALL sheets (Updates + Released) have new extended layout
-    // 2025 ALL sheets (Updates + Released) have old layout
-    // 2026: No=0,Office=1,Importer=2,Shipper=3,PalIsr=4,Consignee=5,CnCount=6,Goods=7
-    //       CnNum=8,BLNum=9,Vessel=10,ShipCo=11,ETD=12,Month=13,ETA=14,NewETA=15
-    //       Invoice=16,BL=17,Office=18,CnNum2=19,SentCustoms=20,FileNum=21
-    //       PaidCustoms=22,Paid=23,Type=24,Date=25,Release=26,Remarks=27,Money=28,Recv=29,Decl=30
-    // 2025: Importer=0,Office=1,CnCount=2,Goods=3,ETA=4,NewETA=5,Month=6
-    //       Invoice=7,BL=8,CnNum=9,ShipCo=10,Office=11,FileNum=12,SentCustoms=13
-    //       Shipper=14,PalIsr=15,Consignee=16,PaidCustoms=17,Paid=18
-    //       Type=19,Date=20,Release=21,Remarks=22,Money=23,Recv=24,Decl=25
+    // Verified from actual file data (not just headers):
+    // 2025 Updates/Released actual data columns:
+    //   col0=Office, col1=CustomerID, col2=ContainerCount, col3=Goods
+    //   col4=ETA, col5=NewETA, col6=Month, col7=Invoice, col8=BLNote
+    //   col9=ContainerNum, col10=ShippingCo, col11=Office, col12=FileNum
+    //   col13=SentToCustoms, col14=Shipper, col15=PalIsr, col16=Consignee
+    //   col17=PaidCustoms, col18=Paid, col19=CheckType, col20=CheckDate
+    //   col21=Release, col22=Remarks, col23=Money, col24=Received, col25=Decl
+    //
+    // 2026 Updates/Released actual data columns:
+    //   col0=No, col1=Office, col2=CustomerID, col3=Shipper, col4=PalIsr
+    //   col5=Consignee, col6=ContainerCount, col7=Goods, col8=ContainerNum
+    //   col9=BLNum, col10=Vessel, col11=ShippingCo, col12=ETD, col13=Month
+    //   col14=ETA, col15=NewETA, col16=Invoice, col17=BLNote, col18=Office
+    //   col19=ContainerNum2, col20=SentToCustoms, col21=FileNum
+    //   col22=PaidCustoms, col23=Paid, col24=CheckType, col25=CheckDate
+    //   col26=Release, col27=Remarks, col28=Money, col29=Received, col30=Decl
 
-    const _CUSTID= _v26 ? 2  : 0;
+    const _CUSTID= _v26 ? 2  : 1;
     const _CNTS  = _v26 ? 6  : 2;
     const _GOODS = _v26 ? 7  : 3;
     const _ETAOR = _v26 ? 14 : 4;
@@ -1682,22 +1711,24 @@ function parsePartnerSheet(wb, sheetName, version) {
       return v !== '' ? v : (rows[i][col] || '');
     };
 
-    const custId   = String(cv(_PCID)).trim();
-    const cnPrimary   = String(cv(_PCNUM)).trim();
-    const cnSecondary = _PCSC>=0 ? String(cv(_PCSC)).trim() : '';
-    const containerNum = cnPrimary || cnSecondary;
-
     const _p26=version==='2026';
-    // 2026 partner (Michy/Deia/Ayman): same new layout as 2026 Updates
-    //   No=0,Office=1,Importer=2,Shipper=3,PalIsr=4,Consignee=5,CnCount=6,Goods=7
-    //   CnNum=8,BLNum=9,Vessel=10,ShipCo=11,ETD=12,Month=13,ETA=14,NewETA=15
-    //   Invoice=16,BL=17,Office=18,CnNum2=19,SentCustoms=20,FileNum=21
-    //   SendInvoices=22,Sold=23,Paid=24,Profit=25,PaidMichy=26,AddCost=27,AddReason=28,Remarks=29,Decl=30
-    // 2025 partner (Michy/Deia/Ayman): old layout
-    //   No=0,Office=1,Importer=2,CnCount=3,Goods=4,ETA=5,NewETA=6,Month=7
-    //   Invoice=8,BL=9,CnNum=10,ShipCo=11,Office=12,FileNum=13,SentCustoms=14
-    //   Shipper=15,PalIsr=16,Consignee=17,SendInvoices=18,Sold=19,Paid=20
-    //   Profit=21,PaidMichy=22,AddCost=23,AddReason=24,Remarks=25,Decl=26
+    // Verified from actual file data:
+    // 2025 Partner (Michy/Deia/Ayman):
+    //   col0=No, col1=Office, col2=CustomerID, col3=ContainerCount, col4=Goods
+    //   col5=ETA, col6=NewETA, col7=Month, col8=Invoice, col9=BLNote
+    //   col10=ContainerNum, col11=ShippingCo, col12=Office, col13=FileNum
+    //   col14=SentToCustoms, col15=Shipper, col16=PalIsr, col17=Consignee
+    //   col18=SendInvoices, col19=Sold, col20=Paid, col21=Profit
+    //   col22=PaidMichy, col23=AddCost, col24=AddReason, col25=Remarks, col26=Decl
+    //
+    // 2026 Partner (Michy/Deia/Ayman): same new layout as 2026 Updates
+    //   col0=No, col1=Office, col2=CustomerID, col3=Shipper, col4=PalIsr
+    //   col5=Consignee, col6=ContainerCount, col7=Goods, col8=ContainerNum
+    //   col9=BLNum, col10=Vessel, col11=ShippingCo, col12=ETD, col13=Month
+    //   col14=ETA, col15=NewETA, col16=Invoice, col17=BLNote, col18=Office
+    //   col19=ContainerNum2, col20=SentToCustoms, col21=FileNum
+    //   col22=SendInvoices, col23=Sold, col24=Paid, col25=Profit
+    //   col26=PaidMichy, col27=AddCost, col28=AddReason, col29=Remarks, col30=Decl
     const _PCID  = 2;
     const _PCNTS = _p26 ? 6  : 3;
     const _PGOOD = _p26 ? 7  : 4;
@@ -1718,6 +1749,11 @@ function parsePartnerSheet(wb, sheetName, version) {
     const _PDN   = _p26 ? 30 : 26;
     const rowFileNum = String(cv(_PFN)).trim();
     const rowGoods   = String(cv(_PGOOD)).trim();
+
+    const custId      = String(cv(_PCID)).trim();
+    const cnPrimary   = String(cv(_PCNUM)).trim();
+    const cnSecondary = _PCSC >= 0 ? String(cv(_PCSC)).trim() : '';
+    const containerNum = cnPrimary || cnSecondary;
 
     // Determine if this row starts a NEW shipment or is a continuation of the current one
     const isContinuation = currentShipment && containerNum && (
@@ -1775,13 +1811,22 @@ function extractFileId(link) {
 async function fetchOneFile(link){
   if(!link||!link.trim())return null;link=link.trim();
   if(link.includes('script.google.com/macros')){
-    try{const r=await fetch(link);if(!r.ok)throw new Error('HTTP '+r.status);
-      const b64=await r.text();if(!b64||b64.length<100)throw new Error('Empty');
-      const bin=atob(b64.trim());const ab=new Uint8Array(bin.length);
+    try{
+      const controller=new AbortController();
+      const timeout=setTimeout(()=>controller.abort(),60000); // 60s timeout for large files
+      const r=await fetch(link,{signal:controller.signal});
+      clearTimeout(timeout);
+      if(!r.ok)throw new Error('HTTP '+r.status);
+      const text=await r.text();
+      if(!text||text.length<100)throw new Error('Empty response');
+      // GAS might return JSON error or HTML — check it's base64
+      const b64=text.trim();
+      if(b64.startsWith('<')||b64.startsWith('{'))throw new Error('GAS returned error: '+b64.substring(0,100));
+      const bin=atob(b64);const ab=new Uint8Array(bin.length);
       for(let i=0;i<bin.length;i++)ab[i]=bin.charCodeAt(i);
-      if(ab[0]!==0x50||ab[1]!==0x4B)throw new Error('Not xlsx');
+      if(ab[0]!==0x50||ab[1]!==0x4B)throw new Error('Not a valid xlsx file');
       return XLSX.read(ab,{type:'array'});
-    }catch(e){console.error('GAS:',e);return null;}
+    }catch(e){console.error('GAS fetch error:',e.message);return null;}
   }
   const mId=link.match(/\/d\/([a-zA-Z0-9_-]+)/);if(!mId)return null;
   const fid=mId[1],isSh=link.includes('docs.google.com/spreadsheets');
@@ -1795,16 +1840,37 @@ async function fetchOneFile(link){
 }
 async function fetchFromDrive(){
   if(!state.driveLink&&!state.driveLink2026)return;
-  updateDriveStatus2('loading','2025');updateDriveStatus2('loading','2026');
-  const[wb25,wb26]=await Promise.all([state.driveLink?fetchOneFile(state.driveLink):Promise.resolve(null),state.driveLink2026?fetchOneFile(state.driveLink2026):Promise.resolve(null)]);
-  window._lastWB=wb25;window._lastWB2026=wb26;
-  if(!wb25&&!wb26){updateDriveStatus2('error','2025');updateDriveStatus2('error','2026');showToast('Both files failed to load.','error');document.getElementById('gasInstructions').style.display='block';return;}
-  if(!wb25){updateDriveStatus2('error','2025');showToast('⚠️ 2025 file failed to load — only 2026 data loaded.','warning');}
-  if(!wb26){updateDriveStatus2('error','2026');showToast('⚠️ 2026 file failed to load — only 2025 data loaded.','warning');}
-  parseWorkbooks(wb25,wb26);
-  updateDriveStatus2(wb25?'connected':'error','2025');
-  updateDriveStatus2(wb26?'connected':'error','2026');
-  state.lastSync=new Date().toISOString();saveState();
+  updateDriveStatus2('loading','2025');
+  updateDriveStatus2('loading','2026');
+  try {
+    const[wb25,wb26]=await Promise.all([
+      state.driveLink?fetchOneFile(state.driveLink):Promise.resolve(null),
+      state.driveLink2026?fetchOneFile(state.driveLink2026):Promise.resolve(null)
+    ]);
+    window._lastWB=wb25;window._lastWB2026=wb26;
+    if(!wb25&&!wb26){
+      updateDriveStatus2('error','2025');
+      updateDriveStatus2('error','2026');
+      showToast('Both files failed to load. Check your Google Apps Script links.','error');
+      document.getElementById('gasInstructions').style.display='block';
+      return;
+    }
+    if(!wb25){
+      showToast('⚠️ 2025 GAS failed — keeping existing 2025 data.','warning');
+    }
+    if(!wb26){
+      showToast('⚠️ 2026 GAS failed — keeping existing 2026 data.','warning');
+    }
+    // Only parse if we got at least something — don't wipe good manually-uploaded data
+    // Pass null for failed files so parseWorkbooks uses only what we have
+    parseWorkbooks(wb25, wb26);
+    state.lastSync=new Date().toISOString();saveState();
+  } catch(e) {
+    console.error('fetchFromDrive error:',e);
+    updateDriveStatus2('error','2025');
+    updateDriveStatus2('error','2026');
+    showToast('Fetch error: '+e.message,'error');
+  }
 }
 
 function saveDriveLink(year) {
