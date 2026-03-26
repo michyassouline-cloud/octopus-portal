@@ -1479,7 +1479,10 @@ function parseWorkbooks(wb2025,wb2026){
   // Partner future shipments → updates; partner past/no-date → released (not dropped)
   const parFut = allPar.filter(isFut);
   const parPast = allPar.filter(s => !isFut(s));
-  const updates=[...allUpd,...parFut],released=[...allRel,...parPast];
+  // Deduplicate: if a container appears in both updates and released, released wins
+  const relContainers = new Set(allRel.flatMap(s=>s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean)));
+  const dedupedUpd = allUpd.filter(s => !s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).some(c=>relContainers.has(c)));
+  const updates=[...dedupedUpd,...parFut],released=[...allRel,...parPast];
   window._lastParsed=updates;state.shipments={updates,released};
   state.lastSync=new Date().toISOString();saveState();
   sbSaveShipments(updates,released).then(ok=>{showToast(ok?'Data loaded & synced! ✓':'Data loaded (cloud sync failed)','success');});
@@ -1642,10 +1645,11 @@ function parseSheet(wb, sheetName, version) {
     const groupCust  = raw[i].customerId;
     while (j < raw.length) {
       const rj = raw[j];
-      const sameFile = groupFile && rj.fileNum === groupFile;
+      const sameFile = groupFile && rj.fileNum && rj.fileNum === groupFile;
+      const bothNoFile = (!groupFile || groupFile === '') && (!rj.fileNum || rj.fileNum === '');
       const sameCustomerAndGoods = rj.customerId === groupCust &&
                                     (rj.goods === '' || rj.goods === groupGoods) &&
-                                    (rj.fileNum === groupFile || rj.fileNum === '' || !rj.fileNum);
+                                    (sameFile || bothNoFile || rj.fileNum === '' || !rj.fileNum);
       if (sameFile || sameCustomerAndGoods) {
         group.push(rj);
         j++;
@@ -1777,6 +1781,8 @@ function parsePartnerSheet(wb, sheetName, version) {
       !custId ||
       // Same customer + same file number → same shipment, extra container
       (custId === currentShipment.customerId && rowFileNum && rowFileNum === currentShipment.fileNum) ||
+      // Same customer + both have no file number → same shipment (pending customs)
+      (custId === currentShipment.customerId && !rowFileNum && !currentShipment.fileNum) ||
       // Same customer + no goods (goods only filled on first row) → same shipment
       (custId === currentShipment.customerId && !rowGoods)
     );
