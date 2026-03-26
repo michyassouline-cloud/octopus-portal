@@ -1180,7 +1180,7 @@ async function sbGetCustomers() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
     const obj = {};
-    rows.forEach(r => { obj[r.id] = { name: r.name || ', password: r.password || '' }; });
+    rows.forEach(r => { obj[r.id] = { name: r.name || '', password: r.password || '' }; });
     return obj;
   } catch(e) { console.error('sbGetCustomers:', e); return null; }
 }
