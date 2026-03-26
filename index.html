@@ -1213,7 +1213,13 @@ function loadState() {
       state.driveLink = parsed.driveLink || '';
       state.driveLink2026 = parsed.driveLink2026 || '';
       state.lastSync = parsed.lastSync || null;
-      // customers now come from Supabase, not localStorage
+      // Auto-migrate old broken 2025 GAS URL to new working one
+      const OLD_2025_URL = 'AKfycbwuNjLd4pZ7CUdeSUzXHuzt3900R5MBlf7p4S1FmKKI1dcaT3DsFZnZDYnyRxca-PBA';
+      const NEW_2025_URL = 'https://script.google.com/macros/s/AKfycbyWAwhyrD_QoCOiRWnKQfdtfP9LlYm_wkFIW1AgjkuL-xRlyPK0K-Hlu5lQf1qykubE/exec';
+      if (state.driveLink && state.driveLink.includes(OLD_2025_URL)) {
+        state.driveLink = NEW_2025_URL;
+        saveState();
+      }
     }
   } catch(e) {}
 }
