@@ -1479,10 +1479,14 @@ function parseWorkbooks(wb2025,wb2026){
   // Partner future shipments → updates; partner past/no-date → released (not dropped)
   const parFut = allPar.filter(isFut);
   const parPast = allPar.filter(s => !isFut(s));
-  // Deduplicate: if a container appears in both updates and released, released wins
+  // Deduplicate: if a container appears in updates, it should NOT also appear in released (from partner past)
+  const updContainers = new Set(allUpd.flatMap(s=>s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean)));
   const relContainers = new Set(allRel.flatMap(s=>s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean)));
+  // Remove from updates if explicitly in released sheet (released sheet wins over updates)
   const dedupedUpd = allUpd.filter(s => !s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).some(c=>relContainers.has(c)));
-  const updates=[...dedupedUpd,...parFut],released=[...allRel,...parPast];
+  // Remove from parPast if container is already in updates (updates wins over partner-past)
+  const dedupedParPast = parPast.filter(s => !s.containerNums.split(/[,\n;]+/).map(c=>c.trim().toUpperCase()).filter(Boolean).some(c=>updContainers.has(c)));
+  const updates=[...dedupedUpd,...parFut],released=[...allRel,...dedupedParPast];
   window._lastParsed=updates;state.shipments={updates,released};
   state.lastSync=new Date().toISOString();saveState();
   sbSaveShipments(updates,released).then(ok=>{showToast(ok?'Data loaded & synced! ✓':'Data loaded (cloud sync failed)','success');});
