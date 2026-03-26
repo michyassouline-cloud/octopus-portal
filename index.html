@@ -1134,7 +1134,7 @@ const MASTER_USERS = [
 
 // GROUP_USERS — seed data. After seeding, passwords live in Supabase.
 const GROUP_USERS = [
-  { id: 'Mohi', pass: '0566760064', customers: ['Adham', 'Fady', 'Mohi Private', 'F047'] },
+  { id: 'Mohi', pass: '0566760064', customers: ['Adham', 'Fady', 'Mohi Private', 'F047', 'F047 - Mohi Friend'] },
 ];
 
 // In-memory cache of special users loaded from Supabase
@@ -1157,7 +1157,7 @@ async function loadSpecialUsers() {
       password:  r.password || '',
       role:      r.role || 'master',
       noMoney:   !!r.no_money,
-      customers: r.customers ? JSON.parse(r.customers) : []
+      customers: (()=>{ try { return r.customers ? JSON.parse(r.customers) : []; } catch(e){ return []; } })()
     }));
     return _specialUsers;
   } catch(e) {
