@@ -1140,7 +1140,17 @@ const SB_HEADERS = {
 // ── Shipment data storage in Supabase ──────────────────────
 async function sbSaveShipments(updates, released) {
   try {
-    const payload = JSON.stringify({ updates, released });
+    // Slim down data to essential fields only to stay within Supabase size limits
+    const slim = s => ({
+      customerId: s.customerId, containerNums: s.containerNums, goods: s.goods,
+      blNote: s.blNote, containers: s.containers, etaOriginal: s.etaOriginal,
+      etaNew: s.etaNew, etd: s.etd, paid: s.paid, paidDate: s.paidDate,
+      fileNum: s.fileNum, palIsr: s.palIsr, consignee: s.consignee,
+      partner: s.partner, sold: s.sold, addCost: s.addCost, addReason: s.addReason,
+      profit: s.profit, checkType: s.checkType, checkDate: s.checkDate,
+      releaseDate: s.releaseDate, declNum: s.declNum
+    });
+    const payload = JSON.stringify({ updates: updates.map(slim), released: released.map(slim) });
     // Upsert a single row with id='main'
     const res = await fetch(`${SUPABASE_URL}/rest/v1/shipment_data`, {
       method: 'POST',
