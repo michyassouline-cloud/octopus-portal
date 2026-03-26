@@ -1735,6 +1735,10 @@ function parsePartnerSheet(wb, sheetName, version) {
       return v !== '' ? v : (rows[i][col] || '');
     };
 
+    // Skip rows with no row number in col 0 (notes/references written below shipments)
+    const rowNum = String(cv(0)).trim();
+    if (!rowNum || isNaN(Number(rowNum))) continue;
+
     const _p26=version==='2026';
     // Verified from actual file data:
     // 2025 Partner (Michy/Deia/Ayman):
