@@ -1173,11 +1173,14 @@ async function sbGetShipments() {
 
 async function sbGetCustomers() {
   try {
-    const res = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=*`, { headers: SB_HEADERS });
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(`${SUPABASE_URL}/rest/v1/customers?select=*`, { headers: SB_HEADERS, signal: controller.signal });
+    clearTimeout(timeout);
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
     const obj = {};
-    rows.forEach(r => { obj[r.id] = { name: r.name || '', password: r.password || '' }; });
+    rows.forEach(r => { obj[r.id] = { name: r.name || ', password: r.password || '' }; });
     return obj;
   } catch(e) { console.error('sbGetCustomers:', e); return null; }
 }
@@ -1318,8 +1321,11 @@ async function doLogin() {
     return;
   }
 
-  err.textContent = 'Invalid credentials. Please try again.';
-  setTimeout(() => err.textContent = '', 3000);
+  const cloudFailed = Object.keys(state.customers).length === 0;
+  err.textContent = cloudFailed
+    ? '⚠️ Could not reach server. Check your connection and try again.'
+    : 'Invalid credentials. Please try again.';
+  setTimeout(() => err.textContent = '', 4000);
 }
 
 function enterApp() {
@@ -2537,7 +2543,11 @@ function toggleCard(id) {
 async function renderAdminUsers() {
   const tbody = document.getElementById('userTableBody');
   tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1rem">Loading from cloud...</td></tr>';
-  await loadCustomersFromCloud();
+  const ok = await loadCustomersFromCloud();
+  if (!ok && !Object.keys(state.customers).length) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--red);padding:2rem">⚠️ Could not connect to cloud database. Check your internet connection and try refreshing.</td></tr>';
+    return;
+  }
   const customers = Object.entries(state.customers);
   if (!customers.length) {
     tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem">No customers yet.</td></tr>';
