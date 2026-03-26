@@ -1659,10 +1659,11 @@ function parseSheet(wb, sheetName, version) {
     while (j < raw.length) {
       const rj = raw[j];
       const sameFile = groupFile && rj.fileNum && rj.fileNum === groupFile;
-      const bothNoFile = (!groupFile || groupFile === '') && (!rj.fileNum || rj.fileNum === '');
+      // Only group no-file rows if the continuation row has NO goods (it's an extra container row, not a new shipment)
+      const bothNoFile = (!groupFile || groupFile === '') && (!rj.fileNum || rj.fileNum === '') && (!rj.goods || rj.goods === '' || rj.goods === groupGoods);
       const sameCustomerAndGoods = rj.customerId === groupCust &&
                                     (rj.goods === '' || rj.goods === groupGoods) &&
-                                    (sameFile || bothNoFile || rj.fileNum === '' || !rj.fileNum);
+                                    (sameFile || (bothNoFile && (!rj.goods || rj.goods === '')));
       if (sameFile || sameCustomerAndGoods) {
         group.push(rj);
         j++;
