@@ -1939,7 +1939,7 @@ function handleFileUpload(e,year){
 // ============================================================
 function getCustomerShipments(type) {
   const cid = state.currentUser.toLowerCase();
-  const matches = s => s.customerId.toLowerCase() === cid;
+  const matches = s => (s.customerId||'').toLowerCase() === cid;
 
   if (type === 'released') {
     return state.shipments.released.filter(matches);
