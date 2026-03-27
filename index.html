@@ -2298,22 +2298,28 @@ function renderGroupShipments(q='', filter='all') {
   const group2 = notReleased.filter(s => !isPd(s) && applyChip(s, false));
   const group3 = releasedGroup.filter(s => applyChip(s, true));
 
-  const totalActive   = group1.length + group2.length;
-  const totalReleased = group3.length;
+  // Apply goods filter to groups BEFORE counting stats
+  const qgG = window._custGoodsFilter || new Set();
+  const g1G = qgG.size ? group1.filter(s => qgG.has((s.goods||'').trim())) : group1;
+  const g2G = qgG.size ? group2.filter(s => qgG.has((s.goods||'').trim())) : group2;
+  const g3G = qgG.size ? group3.filter(s => qgG.has((s.goods||'').trim())) : group3;
+
+  const totalActive   = g1G.length + g2G.length;
+  const totalReleased = g3G.length;
 
   const _csf = window._custStatFilter || null;
   document.getElementById('statsRow').innerHTML =
     `<div class="stat-card${_csf==='active'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('active')"><div class="stat-label">${t('stat_active')}</div><div class="stat-value blue">${totalActive}</div></div>` +
     `<div class="stat-card${_csf==='released'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('released')"><div class="stat-label">${t('stat_released')}</div><div class="stat-value green">${totalReleased}</div></div>` +
     `<div class="stat-card${_csf==='total'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('total')"><div class="stat-label">${t('stat_total')}</div><div class="stat-value">${totalActive + totalReleased}</div></div>` +
-    `<div class="stat-card${_csf==='unpaid'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('unpaid')"><div class="stat-label">${t('stat_unpaid')}</div><div class="stat-value yellow">${group2.length}</div></div>`;
+    `<div class="stat-card${_csf==='unpaid'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('unpaid')"><div class="stat-label">${t('stat_unpaid')}</div><div class="stat-value yellow">${g2G.length}</div></div>`;
 
   const csf = window._custStatFilter || null;
   let allSorted;
-  if (csf === 'active')        allSorted = [...group1, ...group2];
-  else if (csf === 'released') allSorted = [...group3];
-  else if (csf === 'unpaid')   allSorted = [...group2];
-  else                         allSorted = [...group1, ...group2, ...group3];
+  if (csf === 'active')        allSorted = [...g1G, ...g2G];
+  else if (csf === 'released') allSorted = [...g3G];
+  else if (csf === 'unpaid')   allSorted = [...g2G];
+  else                         allSorted = [...g1G, ...g2G, ...g3G];
 
   const el = document.getElementById('activeShipments');
   if (!allSorted.length) {
@@ -2378,8 +2384,14 @@ function renderCustomerShipments(q='', filter='all') {
   const group2 = notReleased.filter(s => !isPd(s) && applyChip(s, false));
   const group3 = releasedGroup.filter(s => applyChip(s, true));
 
-  const totalActive = group1.length + group2.length;
-  const totalReleased = group3.length;
+  // Apply goods filter to groups BEFORE counting stats
+  const qg = window._custGoodsFilter || new Set();
+  const g1 = qg.size ? group1.filter(s => qg.has((s.goods||'').trim())) : group1;
+  const g2 = qg.size ? group2.filter(s => qg.has((s.goods||'').trim())) : group2;
+  const g3 = qg.size ? group3.filter(s => qg.has((s.goods||'').trim())) : group3;
+
+  const totalActive = g1.length + g2.length;
+  const totalReleased = g3.length;
 
   // Stats
   const _csf = window._custStatFilter || null;
@@ -2387,30 +2399,15 @@ function renderCustomerShipments(q='', filter='all') {
     `<div class="stat-card${_csf==='active'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('active')"><div class="stat-label">${t('stat_active')}</div><div class="stat-value blue">${totalActive}</div></div>` +
     `<div class="stat-card${_csf==='released'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('released')"><div class="stat-label">${t('stat_released')}</div><div class="stat-value green">${totalReleased}</div></div>` +
     `<div class="stat-card${_csf==='total'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('total')"><div class="stat-label">${t('stat_total')}</div><div class="stat-value">${totalActive + totalReleased}</div></div>` +
-    `<div class="stat-card${_csf==='unpaid'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('unpaid')"><div class="stat-label">${t('stat_unpaid')}</div><div class="stat-value yellow">${group2.length}</div></div>`;
+    `<div class="stat-card${_csf==='unpaid'?' active-filter':''}" style="cursor:pointer" onclick="setCustStatFilter('unpaid')"><div class="stat-label">${t('stat_unpaid')}</div><div class="stat-value yellow">${g2.length}</div></div>`;
 
   // Apply stat card filter
   const csf = window._custStatFilter || null;
   let allSorted;
-  if (csf === 'active') {
-    allSorted = [...group1, ...group2]; // paid + unpaid active only
-  } else if (csf === 'released') {
-    allSorted = [...group3];
-  } else if (csf === 'unpaid') {
-    // Build unpaid directly so it always works
-    const raw = getCustomerShipments('updates');
-    allSorted = raw.filter(s => {
-      const paid = String(s.paid||'').trim().toLowerCase() === 'yes';
-      const rel = s.releaseDate && s.releaseDate.toString().trim() !== '' && s.releaseDate.toLowerCase() !== 'no';
-      return !paid && !rel;
-    }).filter(s => q ? (s.containerNums||'').toLowerCase().includes(q)||(s.goods||'').toLowerCase().includes(q) : true);
-  } else {
-    allSorted = [...group1, ...group2, ...group3];
-  }
-
-  // Apply goods filter
-  const qg = window._custGoodsFilter || new Set();
-  if (qg.size) allSorted = allSorted.filter(s => qg.has((s.goods||'').trim()));
+  if (csf === 'active')        allSorted = [...g1, ...g2];
+  else if (csf === 'released') allSorted = [...g3];
+  else if (csf === 'unpaid')   allSorted = [...g2];
+  else                         allSorted = [...g1, ...g2, ...g3];
 
   // Total containers banner
   const countContainersCust = arr => arr.reduce((sum, s) => {
