@@ -844,6 +844,11 @@ function doGet() {
           <input type="text" id="masterCustInput" placeholder="Search customer number..." oninput="applyMasterFilters()">
           <button class="search-clear" id="masterCustClear" onclick="clearMasterCust()" style="display:none">✕</button>
         </div>
+        <div class="search-input-wrap" style="margin-top:0.6rem;">
+          <span class="search-icon">📁</span>
+          <input type="text" id="masterFileInput" placeholder="Search file number..." oninput="applyMasterFilters()">
+          <button class="search-clear" id="masterFileClear" onclick="clearMasterFile()" style="display:none">✕</button>
+        </div>
         <div class="filter-chips">
           <button class="chip active" data-filter="all" onclick="setMasterFilter('all',this)" data-master-i18n="master_filter_all">All</button>
           <button class="chip" data-filter="unpaid" onclick="setMasterFilter('unpaid',this)" data-master-i18n="master_filter_unpaid">Unpaid</button>
@@ -2456,7 +2461,7 @@ function buildShipmentCard(s, isReleased, idx, showCustomer) {
       ${badge}
     </div>
     ${showCustomer && s.customerId ? '<div style="font-size:0.72rem;font-family:\'DM Mono\',monospace;color:var(--accent2);margin-bottom:0.5rem;letter-spacing:0.5px;">👤 ' + s.customerId + (state.customers[s.customerId]?.name ? ' · ' + state.customers[s.customerId].name : '') + '</div>' : ''}
-    <div class="card-desc" id="gdesc-${idx}"><span>${s.goods || '—'}</span>${(!state.noMoney && s.blNote) ? ' <span style="font-weight:400;color:#c45000;font-size:0.9em;">- ' + s.blNote.replace(/\n/g,' · ') + '</span>' : ''}</div>
+    <div class="card-desc" id="gdesc-${idx}">${(state.isMaster && s.fileNum) ? '<span style="font-size:0.82em;color:var(--muted);font-family:\'DM Mono\',monospace;font-weight:500;margin-right:0.5rem;">#' + s.fileNum + '</span>' : ''}<span>${s.goods || '—'}</span>${(!state.noMoney && s.blNote) ? ' <span style="font-weight:400;color:#c45000;font-size:0.9em;">- ' + s.blNote.replace(/\n/g,' · ') + '</span>' : ''}</div>
     <div class="card-grid">
       ${s.etd ? `<div class="card-field"><div class="cf-label">${t('lbl_etd')}</div><div class="cf-value">${s.etd}</div></div>` : ''}
       <div class="card-field"><div class="cf-label">${t('lbl_eta_orig')}</div><div class="cf-value">${s.etaOriginal || '—'}</div></div>
@@ -2527,6 +2532,8 @@ function setFilter(f, btn) {
 
 function setMasterFilter(f, btn) {
   masterActiveFilter = f;
+  window._statFilter = null; // clear stat card filter so they don't conflict
+  document.querySelectorAll('#masterView .stat-card').forEach(c => c.classList.remove('active-filter'));
   btn.closest('.filter-chips').querySelectorAll('.chip').forEach(c => c.classList.remove('active'));
   btn.classList.add('active');
   applyMasterFilters();
@@ -2554,15 +2561,16 @@ function matchesFilter(s, isRel, filter) {
     if (d && !isNaN(d)) arrived = d <= new Date();
   }
   const released = isRel || (s.releaseDate && s.releaseDate.toString().trim() !== '' && s.releaseDate.toLowerCase() !== 'no');
+  const hasCheckType = s.checkType && s.checkType.toString().trim() !== '';
   switch(filter) {
-    case 'all':         return true;
-    case 'paid':        return isPd;
-    case 'unpaid':      return !isPd && !released;
-    case 'arrived':     return arrived;
-    case 'not_arrived': return !arrived;
-    case 'released':    return released;
-    case 'not_released':return !released;
-    default:            return true;
+    case 'all':          return true;
+    case 'unpaid':       return arrived && !isPd && !released;        // arrived, not paid, not released
+    case 'paid':         return arrived && isPd;                      // arrived and paid
+    case 'not_arrived':  return !arrived;                             // upcoming — still on the way
+    case 'released':     return released;                             // in released sheet
+    case 'not_released': return arrived && hasCheckType && !released; // in customs — arrived + has check type
+    case 'arrived':      return arrived;
+    default:             return true;
   }
 }
 
@@ -2577,11 +2585,14 @@ function applyFilters() {
 function applyMasterFilters() {
   const q = (document.getElementById('masterSearchInput')?.value || '').trim().toLowerCase();
   const qc = (document.getElementById('masterCustInput')?.value || '').trim().toLowerCase();
+  const qf = (document.getElementById('masterFileInput')?.value || '').trim().toLowerCase();
   const clearBtn = document.getElementById('masterSearchClear');
   const clearCust = document.getElementById('masterCustClear');
+  const clearFile = document.getElementById('masterFileClear');
   if (clearBtn) clearBtn.style.display = q ? 'block' : 'none';
   if (clearCust) clearCust.style.display = qc ? 'block' : 'none';
-  renderMasterShipments(q, masterActiveFilter, qc);
+  if (clearFile) clearFile.style.display = qf ? 'block' : 'none';
+  renderMasterShipments(q, masterActiveFilter, qc, qf);
 }
 
 function clearMasterCust() {
@@ -2590,10 +2601,16 @@ function clearMasterCust() {
   applyMasterFilters();
 }
 
+function clearMasterFile() {
+  document.getElementById('masterFileInput').value = '';
+  document.getElementById('masterFileClear').style.display = 'none';
+  applyMasterFilters();
+}
+
 // ============================================================
 // MASTER VIEW — all customers, updates sheet only
 // ============================================================
-function renderMasterShipments(q='', filter='all', qc='') {
+function renderMasterShipments(q='', filter='all', qc='', qf='') {
   const isPd = s => String(s.paid || '').trim().toLowerCase() === 'yes';
   const isRel = s => s.releaseDate && s.releaseDate.toString().trim() !== '' && s.releaseDate.toLowerCase() !== 'no';
   const today = new Date(); today.setHours(0,0,0,0);
@@ -2605,7 +2622,7 @@ function renderMasterShipments(q='', filter='all', qc='') {
     return eta && !isNaN(eta) && eta >= today;
   };
 
-  const matchQ = s => (!q || (s.containerNums||'').toLowerCase().includes(q) || (s.goods||'').toLowerCase().includes(q)) && (!qc || (s.customerId||'').toString().toLowerCase().includes(qc));
+  const matchQ = s => (!q || (s.containerNums||'').toLowerCase().includes(q) || (s.goods||'').toLowerCase().includes(q)) && (!qc || (s.customerId||'').toString().toLowerCase().includes(qc)) && (!qf || (s.fileNum||'').toString().toLowerCase().includes(qf));
 
   // 1. In port (updates sheet) — not released, not future
   const inPort = state.shipments.updates
@@ -2687,20 +2704,35 @@ function renderMasterShipments(q='', filter='all', qc='') {
 
 
 function setStatFilter(key) {
-  if (window._statFilter === key) { window._statFilter = null; } else { window._statFilter = key; }
-  renderMasterShipments();
+  if (window._statFilter === key) {
+    window._statFilter = null;
+    // Restore "All" chip when stat card is deselected
+    masterActiveFilter = 'all';
+    document.querySelectorAll('#masterView .filter-chips .chip').forEach(c => c.classList.remove('active'));
+    const allChip = document.querySelector('#masterView .filter-chips .chip[data-filter="all"]');
+    if (allChip) allChip.classList.add('active');
+  } else {
+    window._statFilter = key;
+    // Clear all chips — stat card is now the active filter
+    masterActiveFilter = 'all';
+    document.querySelectorAll('#masterView .filter-chips .chip').forEach(c => c.classList.remove('active'));
+  }
+  applyMasterFilters();
 }
 
 function setCustStatFilter(key) {
   if (window._custStatFilter === key) {
     window._custStatFilter = null;
-  } else {
-    window._custStatFilter = key;
-    // Reset green chip filter to "All" so they don't conflict
+    // Restore "All" chip when stat card is deselected
     activeFilter = 'all';
     document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
     const allChip = document.querySelector('#filterChips .chip[data-filter="all"]');
     if (allChip) allChip.classList.add('active');
+  } else {
+    window._custStatFilter = key;
+    // Clear all chips — stat card is now the active filter
+    activeFilter = 'all';
+    document.querySelectorAll('#filterChips .chip').forEach(c => c.classList.remove('active'));
   }
   applyFilters();
 }
