@@ -698,6 +698,17 @@
           <input type="text" id="searchInput" placeholder="Search container number..." oninput="applyFilters()">
           <button class="search-clear" id="searchClear" onclick="clearSearch()" style="display:none">✕</button>
         </div>
+        <!-- Goods multi-select dropdown (customer view) -->
+        <div style="position:relative;margin-bottom:0.6rem;" id="custGoodsDropdownWrap">
+          <div class="search-input-wrap" onclick="toggleCustGoodsDropdown()" style="cursor:pointer;user-select:none;">
+            <span class="search-icon">📦</span>
+            <span id="custGoodsFilterLabel" style="flex:1;color:var(--muted);font-size:0.9rem;">Filter by goods type...</span>
+            <span id="custGoodsFilterClear" style="display:none;font-size:0.75rem;cursor:pointer;padding:2px 6px;color:var(--muted);" onclick="event.stopPropagation();clearCustGoodsFilter()">✕</span>
+            <span style="color:var(--muted);font-size:0.75rem;padding-right:0.3rem;">▾</span>
+          </div>
+          <div id="custGoodsDropdown" style="display:none;position:absolute;top:calc(100% + 4px);left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:10px;box-shadow:0 4px 20px rgba(0,0,0,0.12);z-index:999;max-height:260px;overflow-y:auto;padding:0.4rem 0;">
+          </div>
+        </div>
         <div class="filter-chips" id="filterChips">
           <button class="chip active" data-filter="all" onclick="setFilter('all',this)" data-i18n-chip="filter_all">All</button>
           <button class="chip" data-filter="unpaid" onclick="setFilter('unpaid',this)" data-i18n-chip="filter_unpaid">Unpaid</button>
@@ -709,6 +720,9 @@
         </div>
       </div>
       <div class="stats" id="statsRow"></div>
+      <div id="custTotalBanner" style="display:none;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:0.6rem 1.1rem;margin-top:0.5rem;text-align:center;">
+        <span style="font-family:'Syne',sans-serif;font-weight:800;font-size:1.8rem;color:var(--muted);" id="custTotalCount">0</span><span id="custTotalLabel" style="font-size:0.72rem;color:var(--muted);text-transform:uppercase;letter-spacing:1px;font-family:'DM Mono',monospace;"> Containers Shown</span>
+      </div>
       <div id="activeSection">
         <div class="section-title" data-i18n="active_shipments">Active Shipments</div>
         <div class="shipment-grid" id="activeShipments"></div>
@@ -2393,6 +2407,26 @@ function renderCustomerShipments(q='', filter='all') {
   } else {
     allSorted = [...group1, ...group2, ...group3];
   }
+
+  // Apply goods filter
+  const qg = window._custGoodsFilter || new Set();
+  if (qg.size) allSorted = allSorted.filter(s => qg.has((s.goods||'').trim()));
+
+  // Total containers banner
+  const countContainersCust = arr => arr.reduce((sum, s) => {
+    const cnums = (s.containerNums||'').split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
+    return sum + (cnums.length || parseInt(s.containers)||0 || 1);
+  }, 0);
+  const custTotal = countContainersCust(allSorted);
+  const custBanner = document.getElementById('custTotalBanner');
+  const custCountEl = document.getElementById('custTotalCount');
+  const custLabelEl = document.getElementById('custTotalLabel');
+  if (custBanner && custCountEl) {
+    custCountEl.textContent = custTotal;
+    if (custLabelEl) custLabelEl.textContent = custTotal === 1 ? ' Container Shown' : ' Containers Shown';
+    custBanner.style.display = allSorted.length ? 'block' : 'none';
+  }
+
   const el = document.getElementById('activeShipments');
   if (!allSorted.length) {
     el.innerHTML = `<div class="empty"><div class="empty-icon">📦</div>${t('no_shipments')}</div>`;
@@ -2694,9 +2728,76 @@ function updateGoodsLabel() {
 function clearGoodsFilter() {
   window._goodsFilter = new Set();
   updateGoodsLabel();
-  // Uncheck all checkboxes
   document.querySelectorAll('#goodsDropdown input[type=checkbox]').forEach(cb => cb.checked = false);
   applyMasterFilters();
+}
+
+// ── Customer view goods filter ──
+window._custGoodsFilter = new Set();
+
+function toggleCustGoodsDropdown() {
+  const dd = document.getElementById('custGoodsDropdown');
+  if (dd.style.display === 'none') {
+    populateCustGoodsDropdown();
+    dd.style.display = 'block';
+    setTimeout(() => document.addEventListener('click', closeCustGoodsDropdownOutside), 10);
+  } else {
+    dd.style.display = 'none';
+    document.removeEventListener('click', closeCustGoodsDropdownOutside);
+  }
+}
+
+function closeCustGoodsDropdownOutside(e) {
+  const wrap = document.getElementById('custGoodsDropdownWrap');
+  if (wrap && !wrap.contains(e.target)) {
+    document.getElementById('custGoodsDropdown').style.display = 'none';
+    document.removeEventListener('click', closeCustGoodsDropdownOutside);
+  }
+}
+
+function populateCustGoodsDropdown() {
+  const custId = state.currentUser;
+  const custShipments = state.isGroup
+    ? [...(state.shipments.updates||[]), ...(state.shipments.released||[])].filter(s => state.groupCustomers.includes((s.customerId||'').toLowerCase()))
+    : [...getCustomerShipments('updates'), ...getCustomerShipments('released')];
+  const goodsSet = new Set();
+  custShipments.forEach(s => { if (s.goods && s.goods.trim()) goodsSet.add(s.goods.trim()); });
+  const sorted = [...goodsSet].sort();
+  const dd = document.getElementById('custGoodsDropdown');
+  dd.innerHTML = sorted.length ? sorted.map(g => `
+    <label style="display:flex;align-items:center;gap:0.6rem;padding:0.45rem 0.9rem;cursor:pointer;font-size:0.85rem;color:var(--dark);font-family:'DM Mono',monospace;transition:background 0.1s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
+      <input type="checkbox" ${window._custGoodsFilter.has(g)?'checked':''} onchange="toggleCustGoodsOption(this,'${g.replace(/'/g,"\'")}')">
+      <span>${g}</span>
+    </label>`).join('') : '<div style="padding:0.6rem 0.9rem;color:var(--muted);font-size:0.82rem;">No goods data available</div>';
+}
+
+function toggleCustGoodsOption(cb, value) {
+  if (cb.checked) window._custGoodsFilter.add(value);
+  else window._custGoodsFilter.delete(value);
+  updateCustGoodsLabel();
+  applyFilters();
+}
+
+function updateCustGoodsLabel() {
+  const label = document.getElementById('custGoodsFilterLabel');
+  const clearBtn = document.getElementById('custGoodsFilterClear');
+  if (window._custGoodsFilter.size === 0) {
+    label.textContent = 'Filter by goods type...';
+    label.style.color = 'var(--muted)';
+    if (clearBtn) clearBtn.style.display = 'none';
+  } else {
+    const items = [...window._custGoodsFilter];
+    label.textContent = items.length === 1 ? items[0] : items.length + ' types selected';
+    label.style.color = 'var(--dark)';
+    if (clearBtn) clearBtn.style.display = 'inline';
+  }
+}
+
+function clearCustGoodsFilter() {
+  window._custGoodsFilter = new Set();
+  updateCustGoodsLabel();
+  document.querySelectorAll('#custGoodsDropdown input[type=checkbox]').forEach(cb => cb.checked = false);
+  applyFilters();
 }
 
 // ============================================================
@@ -2769,7 +2870,7 @@ function renderMasterShipments(q='', filter='all', qc='', qf='', qg=new Set()) {
 
   // ── Total containers banner ──
   const countContainers = arr => arr.reduce((sum, s) => {
-    const cnums = (s.containerNums||'').split(/[\n,]/).map(x=>x.trim()).filter(Boolean);
+    const cnums = (s.containerNums||'').split(/[,\n]/).map(x=>x.trim()).filter(Boolean);
     return sum + (cnums.length || parseInt(s.containers)||0 || 1);
   }, 0);
   const visibleAll = [...inPortDisplay, ...upcomingDisplay, ...releasedDisplay];
