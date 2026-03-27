@@ -549,6 +549,8 @@
     margin-bottom: 1.2rem;
     box-shadow: 0 2px 6px var(--shadow);
   }
+  #masterView .search-bar-wrap { margin-bottom: 0.7rem; }
+  #masterView .stats { margin-bottom: 0; }
   .search-input-wrap {
     display: flex;
     align-items: center;
@@ -870,8 +872,8 @@ function doGet() {
         </div>
       </div>
       <div class="stats" id="masterStatsRow"></div>
-      <div id="masterTotalBanner" style="display:none;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:0.7rem 1.1rem 0.85rem;margin-top:0.3rem;margin-bottom:0.2rem;text-align:center;">
-        <span style="font-size:1.15rem;font-weight:800;color:var(--dark);font-family:'DM Mono',monospace;letter-spacing:0.5px;" id="masterTotalCount">0</span><span style="font-size:1.05rem;font-weight:700;color:var(--dark);font-family:'DM Mono',monospace;letter-spacing:0.5px;"> Container Shown</span>
+      <div id="masterTotalBanner" style="display:none;background:var(--bg2);border:1.5px solid var(--border);border-radius:10px;padding:0.6rem 1.1rem;margin-top:0.5rem;text-align:center;">
+        <span style="font-size:0.82rem;font-weight:500;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.3px;" id="masterTotalCount">0</span><span id="masterTotalLabel" style="font-size:0.82rem;font-weight:500;color:var(--muted);font-family:'DM Mono',monospace;letter-spacing:0.3px;"> Container Shown</span>
       </div>
       <div id="masterActiveSection">
         <div class="section-title master-section" data-master-i18n="master_section_inport">🚢 In Port — Active</div>
@@ -2774,8 +2776,10 @@ function renderMasterShipments(q='', filter='all', qc='', qf='', qg=new Set()) {
   const totalContainers = countContainers(visibleAll);
   const banner = document.getElementById('masterTotalBanner');
   const countEl = document.getElementById('masterTotalCount');
+  const labelEl = document.getElementById('masterTotalLabel');
   if (banner && countEl) {
     countEl.textContent = totalContainers;
+    if (labelEl) labelEl.textContent = totalContainers === 1 ? ' Container Shown' : ' Containers Shown';
     banner.style.display = visibleAll.length ? 'block' : 'none';
   }
 
