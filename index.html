@@ -2554,18 +2554,21 @@ function clearMasterSearch() {
 function matchesFilter(s, isRel, filter) {
   const isPd  = String(s.paid || '').trim().toLowerCase() === 'yes';
   const etaStr = s.etaNew || s.etaOriginal || '';
-  let arrived = true;
+  let arrived = false; // default: not arrived if we can't confirm
   if (etaStr) {
     const dmY = etaStr.match(/^(\d{1,2})[\/.\-](\d{1,2})[\/.\-](\d{4})$/);
     const d = dmY ? new Date(+dmY[3], +dmY[2]-1, +dmY[1]) : new Date(etaStr);
     if (d && !isNaN(d)) arrived = d <= new Date();
+    else arrived = true; // unparseable date — treat as arrived
+  } else {
+    arrived = true; // no ETA date means it's an old/manual entry — treat as arrived
   }
   const released = isRel || (s.releaseDate && s.releaseDate.toString().trim() !== '' && s.releaseDate.toLowerCase() !== 'no');
   const hasCheckType = s.checkType && s.checkType.toString().trim() !== '';
   switch(filter) {
     case 'all':          return true;
     case 'unpaid':       return arrived && !isPd && !released;        // arrived, not paid, not released
-    case 'paid':         return arrived && isPd;                      // arrived and paid
+    case 'paid':         return arrived && isPd && !released;         // arrived, paid, not released
     case 'not_arrived':  return !arrived;                             // upcoming — still on the way
     case 'released':     return released;                             // in released sheet
     case 'not_released': return arrived && hasCheckType && !released; // in customs — arrived + has check type
