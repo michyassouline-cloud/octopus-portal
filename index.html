@@ -738,6 +738,7 @@
       <div class="tabs">
         <button class="tab active" onclick="switchAdminTab('users',this)" data-i18n="tab_customers">👥 Customer Accounts</button>
         <button class="tab" onclick="switchAdminTab('data',this)" data-i18n="tab_data">📊 Data Source</button>
+        <button class="tab" onclick="switchAdminTab('log',this)">📋 Activity Log</button>
       </div>
       <div id="adminUsers" class="admin-section">
         <div class="admin-card">
@@ -803,6 +804,24 @@
       </div>
 
       <!-- GAS INSTRUCTIONS -->
+      <!-- ACTIVITY LOG TAB -->
+      <div id="adminLog" style="display:none" class="admin-section">
+        <div class="admin-card">
+          <div class="admin-title">Activity Log</div>
+          <div style="display:flex;gap:0.6rem;margin-bottom:1rem;align-items:center;">
+            <button class="btn-sm" onclick="clearActivityLog()" style="background:var(--red);color:#fff;border-color:var(--red);">🗑 Clear Log</button>
+            <span id="logCount" style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;"></span>
+          </div>
+          <div id="activityLogTable" style="overflow-x:auto;">
+            <table class="user-table">
+              <thead><tr><th>Date &amp; Time</th><th>Event</th><th>User</th><th>Details</th></tr></thead>
+              <tbody id="activityLogBody"></tbody>
+            </table>
+          </div>
+          <div id="logPager" style="display:flex;gap:0.4rem;align-items:center;flex-wrap:wrap;margin-top:1rem;"></div>
+        </div>
+      </div>
+
       <div id="gasInstructions" class="admin-card" style="display:none; border-color: var(--yellow);">
         <div class="admin-title" style="color:var(--yellow);">⚠ CORS Blocked — Use Google Apps Script Instead</div>
         <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.2rem;line-height:1.6;">
@@ -1436,6 +1455,7 @@ async function doLogin() {
     state.currentUser = ADMIN_ID;
     state.isAdmin = true;
     state.isMaster = false;
+    logActivity('Login', ADMIN_ID, 'Admin login');
     enterApp();
     return;
   }
@@ -1458,6 +1478,7 @@ async function doLogin() {
     state.isAdmin = false;
     state.isMaster = true;
     state.noMoney = !!masterMatch.noMoney;
+    logActivity('Login', masterMatch.id, 'Master user login');
     enterApp();
     return;
   }
@@ -1468,6 +1489,7 @@ async function doLogin() {
     state.currentUser = groupMatch.id;
     state.isAdmin = false;
     state.isMaster = false;
+    logActivity('Login', groupMatch.id, 'Group user login');
     state.isGroup = true;
     state.groupCustomers = groupMatch.customers.map(c => c.toLowerCase());
     enterApp();
@@ -1480,6 +1502,7 @@ async function doLogin() {
     state.currentUser = custId;
     state.isAdmin = false;
     state.isMaster = false;
+    logActivity('Login', custId, 'Customer login');
     enterApp();
     return;
   }
@@ -1488,6 +1511,7 @@ async function doLogin() {
   err.textContent = cloudFailed
     ? '⚠️ Could not reach server. Check your connection and try again.'
     : 'Invalid credentials. Please try again.';
+  if (!cloudFailed) logActivity('Login Failed', user, 'Invalid credentials');
   setTimeout(() => err.textContent = '', 4000);
 }
 
@@ -3017,7 +3041,10 @@ async function renderAdminUsers() {
     <tr>
       <td>${id}</td>
       <td>${c.name || '—'}</td>
-      <td style="color:var(--muted)">••••••••</td>
+      <td style="color:var(--muted);font-family:'DM Mono',monospace;">
+        <span id="pw_${id}" style="letter-spacing:2px;">••••••••</span>
+        <button onclick="togglePw('${id}','${(c.password||'').replace(/'/g,\'\'\'\')}')" title="Show/hide password" style="background:none;border:none;cursor:pointer;padding:0 0.3rem;font-size:1rem;vertical-align:middle;opacity:0.6;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">👁</button>
+      </td>
       <td>
         <div style="display:flex;gap:0.4rem">
           <button class="btn-edit" onclick="editCustomer('${id}')">Edit</button>
@@ -3079,7 +3106,9 @@ function switchAdminTab(tab, btn) {
   btn.classList.add('active');
   document.getElementById('adminUsers').style.display = tab === 'users' ? 'flex' : 'none';
   document.getElementById('adminData').style.display = tab === 'data' ? 'flex' : 'none';
+  document.getElementById('adminLog').style.display = tab === 'log' ? 'flex' : 'none';
   if (tab === 'data') renderDriveStatus();
+  if (tab === 'log') renderActivityLog();
 }
 
 // ============================================================
@@ -3392,8 +3421,129 @@ async function saveNewPassword() {
   }
   if (!ok) { errEl.textContent = t('change_pass_err_fail'); return; }
 
+  logActivity('Password Changed', userId, 'Password updated successfully');
   closeChangePassword();
   showToast(t('change_pass_success'), 'success');
+}
+
+// ============================================================
+// ACTIVITY LOG — Supabase backed, stores all, paginated 100/page
+// ============================================================
+const LOG_PAGE_SIZE = 100;
+let logCurrentPage = 0;
+let logTotalCount = 0;
+
+async function logActivity(event, user, details) {
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/activity_log`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ event, user_id: user || '—', details: details || '' })
+    });
+  } catch(e) {}
+}
+
+async function renderActivityLog(page) {
+  if (page !== undefined) logCurrentPage = page;
+  const tbody = document.getElementById('activityLogBody');
+  const countEl = document.getElementById('logCount');
+  const pagerEl = document.getElementById('logPager');
+  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1rem">Loading...</td></tr>';
+  if (pagerEl) pagerEl.innerHTML = '';
+
+  try {
+    // Get total count
+    const countRes = await fetch(
+      `${SUPABASE_URL}/rest/v1/activity_log?select=id`,
+      { headers: { ...SB_HEADERS, 'Prefer': 'count=exact', 'Range': '0-0' } }
+    );
+    const cr = countRes.headers.get('content-range');
+    logTotalCount = cr ? parseInt(cr.split('/')[1]) || 0 : 0;
+
+    const totalPages = Math.max(1, Math.ceil(logTotalCount / LOG_PAGE_SIZE));
+    if (logCurrentPage >= totalPages) logCurrentPage = totalPages - 1;
+    const from = logCurrentPage * LOG_PAGE_SIZE;
+    const to = from + LOG_PAGE_SIZE - 1;
+
+    // Fetch page
+    const res = await fetch(
+      `${SUPABASE_URL}/rest/v1/activity_log?select=*&order=created_at.desc`,
+      { headers: { ...SB_HEADERS, 'Range': `${from}-${to}` } }
+    );
+    const logs = await res.json();
+
+    if (countEl) countEl.textContent = `${logTotalCount.toLocaleString()} total event${logTotalCount !== 1 ? 's' : ''}`;
+
+    if (!logTotalCount) {
+      tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1.5rem">No activity recorded yet.</td></tr>';
+      return;
+    }
+
+    tbody.innerHTML = logs.map(l => {
+      const d = new Date(l.created_at);
+      const dateStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+      const eventColor = l.event === 'Login' ? 'var(--green)' : l.event === 'Login Failed' ? 'var(--red)' : l.event === 'Password Changed' ? 'var(--yellow)' : 'var(--text)';
+      return `<tr>
+        <td style="font-family:'DM Mono',monospace;font-size:0.78rem;white-space:nowrap;">${dateStr}</td>
+        <td><span style="color:${eventColor};font-weight:600;">${l.event}</span></td>
+        <td style="font-family:'DM Mono',monospace;">${l.user_id}</td>
+        <td style="color:var(--muted);font-size:0.85rem;">${l.details}</td>
+      </tr>`;
+    }).join('');
+
+    // Render pager
+    if (pagerEl && totalPages > 1) {
+      const btnStyle = 'border:1px solid var(--border);background:var(--bg2);color:var(--text);border-radius:6px;padding:0.3rem 0.7rem;cursor:pointer;font-size:0.82rem;';
+      const activeBtnStyle = 'border:1px solid var(--dark);background:var(--dark);color:#fff;border-radius:6px;padding:0.3rem 0.7rem;cursor:pointer;font-size:0.82rem;font-weight:700;';
+      let btns = '';
+      // Prev
+      btns += `<button style="${logCurrentPage === 0 ? btnStyle + 'opacity:0.35;cursor:default;' : btnStyle}" ${logCurrentPage === 0 ? 'disabled' : `onclick="renderActivityLog(${logCurrentPage - 1})"`}>← Prev</button>`;
+      // Page numbers — show window of 5 around current
+      const start = Math.max(0, logCurrentPage - 2);
+      const end = Math.min(totalPages - 1, start + 4);
+      if (start > 0) btns += `<button style="${btnStyle}" onclick="renderActivityLog(0)">1</button>${start > 1 ? '<span style="padding:0 0.3rem;color:var(--muted)">…</span>' : ''}`;
+      for (let i = start; i <= end; i++) {
+        btns += `<button style="${i === logCurrentPage ? activeBtnStyle : btnStyle}" onclick="renderActivityLog(${i})">${i + 1}</button>`;
+      }
+      if (end < totalPages - 1) btns += `${end < totalPages - 2 ? '<span style="padding:0 0.3rem;color:var(--muted)">…</span>' : ''}<button style="${btnStyle}" onclick="renderActivityLog(${totalPages - 1})">${totalPages}</button>`;
+      // Next
+      btns += `<button style="${logCurrentPage >= totalPages - 1 ? btnStyle + 'opacity:0.35;cursor:default;' : btnStyle}" ${logCurrentPage >= totalPages - 1 ? 'disabled' : `onclick="renderActivityLog(${logCurrentPage + 1})"`}>Next →</button>`;
+      // Page info
+      btns += `<span style="font-size:0.78rem;color:var(--muted);font-family:'DM Mono',monospace;">Showing ${from + 1}–${Math.min(to + 1, logTotalCount)} of ${logTotalCount.toLocaleString()}</span>`;
+      pagerEl.innerHTML = btns;
+    }
+  } catch(e) {
+    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--red);padding:1.5rem">⚠️ Could not load log from database.</td></tr>';
+  }
+}
+
+async function clearActivityLog() {
+  if (!confirm('Clear ALL activity log entries? This cannot be undone.')) return;
+  try {
+    await fetch(`${SUPABASE_URL}/rest/v1/activity_log?id=gte.0`, {
+      method: 'DELETE',
+      headers: SB_HEADERS
+    });
+    logCurrentPage = 0;
+    renderActivityLog(0);
+    showToast('Activity log cleared.', 'success');
+  } catch(e) {
+    showToast('Failed to clear log.', 'error');
+  }
+}
+
+function togglePw(id, pw) {
+  const el = document.getElementById('pw_' + id);
+  if (!el) return;
+  if (el.dataset.shown === '1') {
+    el.textContent = '••••••••';
+    el.style.letterSpacing = '2px';
+    el.dataset.shown = '0';
+  } else {
+    el.textContent = pw;
+    el.style.letterSpacing = 'normal';
+    el.dataset.shown = '1';
+  }
 }
 
 // Close on backdrop click
