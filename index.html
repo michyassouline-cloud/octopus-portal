@@ -3043,7 +3043,7 @@ async function renderAdminUsers() {
       <td>${c.name || '—'}</td>
       <td style="color:var(--muted);font-family:'DM Mono',monospace;">
         <span id="pw_${id}" style="letter-spacing:2px;">••••••••</span>
-        <button onclick="togglePw('${id}','${(c.password||'').replace(/'/g,\'\'\'\')}')" title="Show/hide password" style="background:none;border:none;cursor:pointer;padding:0 0.3rem;font-size:1rem;vertical-align:middle;opacity:0.6;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">👁</button>
+        <button onclick="togglePw('${id}')" data-pw="${(c.password||'').replace(/"/g,'&quot;')}" title="Show/hide password" style="background:none;border:none;cursor:pointer;padding:0 0.3rem;font-size:1rem;vertical-align:middle;opacity:0.6;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">👁</button>
       </td>
       <td>
         <div style="display:flex;gap:0.4rem">
@@ -3532,9 +3532,11 @@ async function clearActivityLog() {
   }
 }
 
-function togglePw(id, pw) {
+function togglePw(id) {
   const el = document.getElementById('pw_' + id);
-  if (!el) return;
+  const btn = el ? el.nextElementSibling : null;
+  if (!el || !btn) return;
+  const pw = btn.getAttribute('data-pw') || '';
   if (el.dataset.shown === '1') {
     el.textContent = '••••••••';
     el.style.letterSpacing = '2px';
