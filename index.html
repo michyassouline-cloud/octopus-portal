@@ -756,15 +756,29 @@
               <label>Password</label>
               <input type="password" id="newUserPass" placeholder="Set password">
             </div>
+            <div class="form-field">
+              <label>Phone (for SMS, e.g. 0521234567)</label>
+              <input type="tel" id="newUserPhone" placeholder="05XXXXXXXX">
+            </div>
             <button class="btn-add" onclick="addCustomer()">+ Add Customer</button>
           </div>
         </div>
         <div class="admin-card">
           <div class="admin-title">Customer Accounts</div>
           <table class="user-table">
-            <thead><tr><th>Customer ID</th><th>Name</th><th>Password</th><th>Actions</th></tr></thead>
+            <thead><tr><th>Customer ID</th><th>Name</th><th>Phone</th><th>Password</th><th>Actions</th></tr></thead>
             <tbody id="userTableBody"></tbody>
           </table>
+        </div>
+        <div class="admin-card">
+          <div class="admin-title">Import Customers from Sheet Data</div>
+          <p style="font-size:0.85rem;color:var(--muted);margin-bottom:1.2rem;line-height:1.6;">
+            Scans every shipment currently loaded (Michy, Deia, Ayman &amp; the main Updates/Released sheets) for
+            customer numbers that don't have a user account yet, so you can see who's missing and add them in bulk
+            — with a random password and a phone number, even if they never log in themselves.
+          </p>
+          <button class="btn-add" onclick="scanForMissingCustomers()">🔍 Scan for New Customers</button>
+          <div id="missingCustomersWrap" style="margin-top:1.2rem;"></div>
         </div>
         <div class="admin-card">
           <div class="admin-title">Backup & Restore</div>
@@ -1347,17 +1361,17 @@ async function sbGetCustomers() {
     if (!res.ok) throw new Error('HTTP ' + res.status);
     const rows = await res.json();
     const obj = {};
-    rows.forEach(r => { obj[r.id] = { name: r.name || '', password: r.password || '' }; });
+    rows.forEach(r => { obj[r.id] = { name: r.name || '', password: r.password || '', phone: r.phone || '' }; });
     return obj;
   } catch(e) { console.error('sbGetCustomers:', e); return null; }
 }
 
-async function sbSaveCustomer(id, name, password) {
+async function sbSaveCustomer(id, name, password, phone) {
   try {
     const res = await fetch(`${SUPABASE_URL}/rest/v1/customers`, {
       method: 'POST',
       headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
-      body: JSON.stringify({ id, name, password })
+      body: JSON.stringify({ id, name, password, phone: phone || null })
     });
     return res.ok;
   } catch(e) { console.error('sbSaveCustomer:', e); return false; }
@@ -1373,12 +1387,14 @@ async function sbDeleteCustomer(id) {
   } catch(e) { console.error('sbDeleteCustomer:', e); return false; }
 }
 
-async function sbUpdateCustomer(id, name, password) {
+async function sbUpdateCustomer(id, name, password, phone) {
   try {
+    const body = { name, password };
+    if (phone !== undefined) body.phone = phone || null;
     const res = await fetch(`${SUPABASE_URL}/rest/v1/customers?id=eq.${encodeURIComponent(id)}`, {
       method: 'PATCH',
       headers: SB_HEADERS,
-      body: JSON.stringify({ name, password })
+      body: JSON.stringify(body)
     });
     return res.ok;
   } catch(e) { console.error('sbUpdateCustomer:', e); return false; }
@@ -2205,8 +2221,26 @@ async function fetchFromDrive(){
 function saveDriveLink(year) {
   if(year==='2026'){const l=document.getElementById('driveLink2026').value.trim();if(!l)return;state.driveLink2026=l;}else{const l=document.getElementById('driveLink').value.trim();if(!l)return;state.driveLink=l;}
   saveState();fetchFromDrive();
+  syncDriveLinksToCloud();
   if(state.syncInterval)clearInterval(state.syncInterval);
   state.syncInterval=setInterval(()=>fetchFromDrive(),2*60*60*1000);
+}
+
+// Mirrors the Apps Script URLs into Supabase app_settings so the scheduled
+// SMS-reminder Edge Function (which runs server-side, with no browser) can
+// read the same data source your admin panel uses.
+async function syncDriveLinksToCloud() {
+  try {
+    const rows = [
+      { key: 'driveLink',     value: state.driveLink     || '' },
+      { key: 'driveLink2026', value: state.driveLink2026 || '' }
+    ];
+    await fetch(`${SUPABASE_URL}/rest/v1/app_settings`, {
+      method: 'POST',
+      headers: { ...SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
+      body: JSON.stringify(rows)
+    });
+  } catch(e) { console.error('syncDriveLinksToCloud:', e); }
 }
 
 function renderDriveStatus() {
@@ -3027,21 +3061,22 @@ function toggleCard(id) {
 // ============================================================
 async function renderAdminUsers() {
   const tbody = document.getElementById('userTableBody');
-  tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:1rem">Loading from cloud...</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:1rem">Loading from cloud...</td></tr>';
   const ok = await loadCustomersFromCloud();
   if (!ok && !Object.keys(state.customers).length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--red);padding:2rem">⚠️ Could not connect to cloud database. Check your internet connection and try refreshing.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--red);padding:2rem">⚠️ Could not connect to cloud database. Check your internet connection and try refreshing.</td></tr>';
     return;
   }
   const customers = Object.entries(state.customers);
   if (!customers.length) {
-    tbody.innerHTML = '<tr><td colspan="4" style="text-align:center;color:var(--muted);padding:2rem">No customers yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--muted);padding:2rem">No customers yet.</td></tr>';
     return;
   }
   tbody.innerHTML = customers.map(([id, c]) => `
     <tr>
       <td>${id}</td>
       <td>${c.name || '—'}</td>
+      <td style="font-family:'DM Mono',monospace;color:${c.phone ? 'var(--text)' : 'var(--muted)'};">${c.phone || '— not set'}</td>
       <td style="color:var(--muted);font-family:'DM Mono',monospace;">
         <span id="pw_${id}" style="letter-spacing:2px;">••••••••</span>
         <button onclick="togglePw('${id}')" data-pw="${(c.password||'').replace(/"/g,'&quot;')}" title="Show/hide password" style="background:none;border:none;cursor:pointer;padding:0 0.3rem;font-size:1rem;vertical-align:middle;opacity:0.6;" onmouseenter="this.style.opacity='1'" onmouseleave="this.style.opacity='0.6'">👁</button>
@@ -3060,16 +3095,104 @@ async function addCustomer() {
   const id = document.getElementById('newUserId').value.trim();
   const name = document.getElementById('newUserName').value.trim();
   const pass = document.getElementById('newUserPass').value;
+  const phone = document.getElementById('newUserPhone').value.trim();
   if (!id || !pass) { showToast('Customer ID and password are required.', 'error'); return; }
-  const ok = await sbSaveCustomer(id, name, pass);
+  const ok = await sbSaveCustomer(id, name, pass, phone);
   if (!ok) { showToast('Failed to save to cloud. Check connection.', 'error'); return; }
-  state.customers[id] = { name, password: pass };
+  state.customers[id] = { name, password: pass, phone };
   saveState();
   renderAdminUsers();
   document.getElementById('newUserId').value = '';
   document.getElementById('newUserName').value = '';
   document.getElementById('newUserPass').value = '';
+  document.getElementById('newUserPhone').value = '';
   showToast('Customer added!', 'success');
+}
+
+// ============================================================
+// ADMIN — IMPORT MISSING CUSTOMERS FROM SHEET DATA
+// ============================================================
+function generateRandomPassword(length = 8) {
+  const chars = 'ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+  let out = '';
+  for (let i = 0; i < length; i++) out += chars[Math.floor(Math.random() * chars.length)];
+  return out;
+}
+
+function scanForMissingCustomers() {
+  const wrap = document.getElementById('missingCustomersWrap');
+  const allShipments = [...(state.shipments.updates || []), ...(state.shipments.released || [])];
+  if (!allShipments.length) {
+    wrap.innerHTML = '<p style="color:var(--muted);font-size:0.85rem;">No shipment data loaded yet — open the Data Source tab and load/sync your Excel files first.</p>';
+    return;
+  }
+
+  const existing = new Set(Object.keys(state.customers).map(id => id.toLowerCase()));
+  const seen = new Map(); // customerId (lowercase) -> { customerId, sources:Set }
+  allShipments.forEach(s => {
+    const id = (s.customerId || '').trim();
+    if (!id || existing.has(id.toLowerCase())) return;
+    const key = id.toLowerCase();
+    if (!seen.has(key)) seen.set(key, { customerId: id, sources: new Set() });
+    if (s._source) seen.get(key).sources.add(s._source);
+  });
+
+  const missing = [...seen.values()].sort((a, b) => a.customerId.localeCompare(b.customerId));
+
+  if (!missing.length) {
+    wrap.innerHTML = '<p style="color:var(--green);font-size:0.85rem;">✓ Every customer number in the loaded sheets already has a user account.</p>';
+    return;
+  }
+
+  wrap.innerHTML = `
+    <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.8rem;">Found ${missing.length} customer number${missing.length===1?'':'s'} without an account:</p>
+    <div style="display:flex;gap:0.6rem;margin-bottom:0.8rem;">
+      <button class="btn-sm" onclick="document.querySelectorAll('.missing-cust-check').forEach(c=>c.checked=true)">Select All</button>
+      <button class="btn-sm" onclick="document.querySelectorAll('.missing-cust-check').forEach(c=>c.checked=false)">Select None</button>
+    </div>
+    <table class="user-table">
+      <thead><tr><th></th><th>Customer ID</th><th>Source Sheet(s)</th><th>Phone (optional)</th><th>Password</th></tr></thead>
+      <tbody>
+        ${missing.map((m, i) => `
+          <tr>
+            <td><input type="checkbox" class="missing-cust-check" data-idx="${i}" checked></td>
+            <td style="font-family:'DM Mono',monospace;">${m.customerId}</td>
+            <td style="color:var(--muted);font-size:0.8rem;">${[...m.sources].join(', ') || '—'}</td>
+            <td><input type="tel" class="missing-cust-phone" data-idx="${i}" placeholder="05XXXXXXXX" style="width:130px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;color:var(--text);font-family:'DM Mono',monospace;font-size:0.85rem;"></td>
+            <td><input type="text" class="missing-cust-pass" data-idx="${i}" value="${generateRandomPassword()}" style="width:110px;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:0.4rem 0.6rem;color:var(--text);font-family:'DM Mono',monospace;font-size:0.85rem;"></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    <button class="btn-add" style="margin-top:1rem;" onclick='addSelectedMissingCustomers(${JSON.stringify(missing.map(m=>m.customerId))})'>+ Add Selected as Users</button>
+    <div id="importMissingStatus" style="font-size:0.82rem;margin-top:0.6rem;font-family:'DM Mono',monospace;"></div>
+  `;
+}
+
+async function addSelectedMissingCustomers(customerIds) {
+  const statusEl = document.getElementById('importMissingStatus');
+  const checks = document.querySelectorAll('.missing-cust-check');
+  let added = 0, failed = 0;
+
+  for (const check of checks) {
+    if (!check.checked) continue;
+    const idx = check.getAttribute('data-idx');
+    const id = customerIds[idx];
+    const phoneEl = document.querySelector(`.missing-cust-phone[data-idx="${idx}"]`);
+    const passEl = document.querySelector(`.missing-cust-pass[data-idx="${idx}"]`);
+    const phone = phoneEl ? phoneEl.value.trim() : '';
+    const pass = passEl && passEl.value.trim() ? passEl.value.trim() : generateRandomPassword();
+
+    const ok = await sbSaveCustomer(id, id, pass, phone); // name defaults to the customer ID itself — edit later if needed
+    if (ok) { state.customers[id] = { name: id, password: pass, phone }; added++; }
+    else failed++;
+  }
+
+  saveState();
+  renderAdminUsers();
+  statusEl.textContent = `Added ${added} customer${added===1?'':'s'}.` + (failed ? ` ${failed} failed — check your connection and try again.` : '');
+  showToast(`${added} customer${added===1?'':'s'} added!`, failed ? 'error' : 'success');
+  scanForMissingCustomers(); // refresh the list (should now be empty or smaller)
 }
 
 async function deleteCustomer(id) {
@@ -3088,12 +3211,16 @@ async function editCustomer(id) {
   if (newPass === null) return;
   const newName = prompt(`Display name for ${id}:`, c.name || '');
   if (newName === null) return;
+  const newPhone = prompt(`Phone number for ${id} (for SMS reminders, e.g. 0521234567, leave blank to remove):`, c.phone || '');
+  if (newPhone === null) return;
   const finalPass = newPass || c.password;
   const finalName = newName !== null ? newName : c.name;
-  const ok = await sbUpdateCustomer(id, finalName, finalPass);
+  const finalPhone = newPhone.trim();
+  const ok = await sbUpdateCustomer(id, finalName, finalPass, finalPhone);
   if (!ok) { showToast('Failed to update in cloud.', 'error'); return; }
   c.password = finalPass;
   c.name = finalName;
+  c.phone = finalPhone;
   saveState();
   renderAdminUsers();
   showToast('Customer updated.', 'success');
