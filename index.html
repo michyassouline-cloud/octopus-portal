@@ -1400,10 +1400,17 @@ async function sbGetCustomerBalance(custId) {
 window._custFinancial = null;
 async function loadAndRenderCustomerFinancials() {
   if (state.isAdmin || state.isMaster || state.isGroup || !state.currentUser) return;
-  // Prefer the customer's stored display name (matches the Ledger's own
-  // "customer" field) and fall back to the login id itself.
-  const custKey = (state.customers[state.currentUser] && state.customers[state.currentUser].name) || state.currentUser;
-  const balance = await sbGetCustomerBalance(custKey);
+  // The Ledger keys customer_balances by the customer code as it appears in
+  // Michy's NASA data (e.g. "610"), which is the portal login id — try that
+  // first. Only fall back to the customer's stored display name (if it's
+  // different) in case a particular customer was pushed under that instead.
+  let balance = await sbGetCustomerBalance(state.currentUser);
+  if (balance === null) {
+    const displayName = state.customers[state.currentUser] && state.customers[state.currentUser].name;
+    if (displayName && displayName !== state.currentUser) {
+      balance = await sbGetCustomerBalance(displayName);
+    }
+  }
   window._custFinancial = (balance === null) ? null : { balance };
   renderCustomerFinancials();
 }
