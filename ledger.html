@@ -1,8 +1,6 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
 <meta charset="UTF-8">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
@@ -283,6 +281,7 @@
     .search{ min-width:0; }
   }
 </style>
+
 </head>
 <body>
 <div id="app">
@@ -407,6 +406,18 @@
       console.error('sbSaveLedger:', e);
       return { ok:false, detail: (e && e.message) || 'network error' };
     });
+  }
+
+  // How many real records a ledger state object holds. Used so a cloud copy
+  // that looks empty (or has noticeably fewer records than what we already
+  // have) never silently overwrites real local data — financial history
+  // should only ever grow, never quietly vanish because of a bad sync.
+  function sbStateRecordCount(s){
+    if(!s) return 0;
+    return (s.customerPayments||[]).length + (s.nasaPayments||[]).length +
+      Object.keys(s.customerAdjustments||{}).length +
+      Object.keys(s.creditLimits||{}).length +
+      (s.externalWorkerPayments||[]).length;
   }
 
   var currentView = "overview";
@@ -1395,8 +1406,16 @@
   // Pull the authoritative cloud copy (shared with octopus-track.com) and
   // refresh once it's in, so edits made on either side are always reflected.
   sbLoadLedger().then(function(cloud){
-    if(!cloud){
-      // Nothing saved to the cloud yet — seed it with what's embedded here.
+    var localCount = sbStateRecordCount(state);
+    var cloudCount = sbStateRecordCount(cloud);
+    if(!cloud || cloudCount < localCount){
+      // Nothing saved to the cloud yet, or what's there has fewer records than
+      // what we already have loaded (could be a blank/stale row from a bad
+      // sync) — never let that silently wipe real data. Keep what we have and
+      // push it up instead.
+      if(cloud && cloudCount < localCount){
+        console.warn('Cloud ledger state ('+cloudCount+' records) looks less complete than local ('+localCount+') — keeping local data and re-syncing it up instead of accepting the cloud copy.');
+      }
       sbSaveLedger(state);
       return;
     }
