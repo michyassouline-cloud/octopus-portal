@@ -873,6 +873,12 @@
     list = list.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
 
     var total = list.reduce(function(a,p){ return a+(Number(p.amount)||0); }, 0);
+    // Missing `paid` on an entry means it predates this field — treat it as
+    // already paid rather than suddenly flagging old, settled entries as owing.
+    var paidTotal = list.reduce(function(a,p){ return p.paid!==false ? a+(Number(p.amount)||0) : a; }, 0);
+    var unpaidTotal = list.reduce(function(a,p){ return p.paid===false ? a+(Number(p.amount)||0) : a; }, 0);
+    var paidCount = list.filter(function(p){ return p.paid!==false; }).length;
+    var unpaidCount = list.filter(function(p){ return p.paid===false; }).length;
 
     var periodLabels = { all:'All time', week:'This week', month:'This month', year:'This year' };
     var periodBtns = ['all','week','month','year'].map(function(k){
@@ -888,21 +894,27 @@
         ? '<span class="pill good">'+esc(match.customer||'—')+'</span> <span class="muted">'+esc(match.goods||'')+'</span>'+
           '<div class="muted" style="font-size:11.5px; margin-top:2px;">File '+esc(match.fileNumber||'—')+' · '+esc(match.containerNumber||'—')+'</div>'
         : (p.ref ? '<span class="pill warn">No match found</span>' : '<span class="muted">—</span>');
-      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+'</td><td>'+esc(p.payee||'—')+'</td><td>'+esc(p.reason||'—')+'</td>'+
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+'</td>'+
+        '<td style="text-align:center;"><label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">'+
+          '<input type="checkbox" class="extw-paid-cb" data-extw-paid="'+p.id+'" '+(p.paid!==false?'checked':'')+'>'+
+          '<span class="pill '+(p.paid!==false?'good':'warn')+'">'+(p.paid!==false?'Paid':'Need to pay')+'</span>'+
+        '</label></td>'+
+        '<td>'+esc(p.payee||'—')+'</td><td>'+esc(p.reason||'—')+'</td>'+
         '<td class="muted">'+esc(p.ref||'—')+'</td><td>'+matchHtml+'</td>'+
         '<td><button class="btn small ghost danger" data-del-extw="'+p.id+'">Remove</button></td></tr>';
-    }).join('') : '<tr><td colspan="7" class="empty">No external worker payments match'+(extwPeriodFilter!=='all'||extwReasonFilter!=='all'?' these filters':' yet for '+account)+'.</td></tr>';
+    }).join('') : '<tr><td colspan="8" class="empty">No external worker payments match'+(extwPeriodFilter!=='all'||extwReasonFilter!=='all'?' these filters':' yet for '+account)+'.</td></tr>';
 
     root.innerHTML =
       '<div class="grid-cards">'+
-        '<div class="card accent-'+account+'"><div class="card-label">Total paid to external workers</div><div class="card-value row-neg">'+fmt(total)+'</div><div class="card-sub">'+list.length+' of '+full.length+' entries · subtracted from '+account+' profit</div></div>'+
+        '<div class="card accent-'+account+'"><div class="card-label">Actually paid</div><div class="card-value row-neg">'+fmt(paidTotal)+'</div><div class="card-sub">'+paidCount+' of '+list.length+' entries · subtracted from '+account+' profit</div></div>'+
+        '<div class="card accent-'+account+'"><div class="card-label">Need to Be Paid</div><div class="card-value" style="color:var(--warn);">'+fmt(unpaidTotal)+'</div><div class="card-sub">'+unpaidCount+' of '+list.length+' entries still owed</div></div>'+
       '</div>'+
       '<div class="section"><div class="section-head"><h2>External Account — '+account+'</h2><button class="btn small primary" data-open-extw-pay="'+account+'">+ Log External Worker Payment</button></div>'+
         '<div class="table-wrap" style="padding:14px 16px; margin-bottom:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">'+
           '<div class="seg" style="max-width:380px;" id="extw-period-seg">'+periodBtns+'</div>'+
           '<select id="extw-reason-filter" style="padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink); max-width:200px;">'+reasonOptions+'</select>'+
         '</div>'+
-        '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Amount</th><th>Paid to</th><th>Reason</th><th>File / Container #</th><th>Matched shipment</th><th></th></tr></thead>'+
+        '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Amount</th><th>Status</th><th>Paid to</th><th>Reason</th><th>File / Container #</th><th>Matched shipment</th><th></th></tr></thead>'+
         '<tbody>'+rows+'</tbody></table></div></div>';
   }
 
@@ -1223,6 +1235,16 @@
       renderView(currentView);
       return;
     }
+    if(e.target.classList.contains('extw-paid-cb')){
+      var extwPaidId = e.target.dataset.extwPaid;
+      var extwPaidEntry = (state.externalWorkerPayments||[]).find(function(p){ return p.id===extwPaidId; });
+      if(extwPaidEntry){
+        extwPaidEntry.paid = e.target.checked;
+        renderView(currentView);
+        persist(extwPaidEntry.paid ? 'Marked as paid.' : 'Marked as not yet paid.');
+      }
+      return;
+    }
     if(!e.target.classList.contains('credit-input')) return;
     var val = e.target.value.trim();
     if(e.target.dataset.limit != null){
@@ -1352,6 +1374,7 @@
             '<div class="field"><label for="extw-reason">Reason</label><input type="text" id="extw-reason" name="reason" placeholder="e.g. extra unloading labor" required></div>'+
             '<div class="field"><label for="extw-ref">File # or Container #</label><input type="text" id="extw-ref" name="ref" placeholder="e.g. 1138860 or ONEU5892502"></div>'+
             '<div class="field" style="margin-top:-6px;"><div id="extw-match-preview" style="font-size:12.5px; color:var(--ink-dim);"></div></div>'+
+            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="extw-paid" checked style="width:auto;">Already paid</label></div>'+
             '<div class="modal-actions">'+
               '<button type="button" class="btn ghost" id="extw-cancel">Cancel</button>'+
               '<button type="submit" class="btn primary">Save entry</button>'+
@@ -1387,8 +1410,9 @@
       if(!amount || amount<=0){ toast('Enter an amount greater than 0.', true); return; }
       if(!payee){ toast('Enter who was paid.', true); return; }
       if(!reason){ toast('Enter a reason for this payment.', true); return; }
+      var paid = document.getElementById('extw-paid').checked;
       state.externalWorkerPayments = state.externalWorkerPayments || [];
-      state.externalWorkerPayments.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, ref:ref });
+      state.externalWorkerPayments.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, ref:ref, paid:paid });
       closeModal();
       renderView(currentView);
       persist('External worker payment logged.');
