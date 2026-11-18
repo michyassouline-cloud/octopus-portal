@@ -310,6 +310,10 @@
       <button class="navitem" data-view="extworker-Michy"><span class="dot"></span>Michy</button>
       <button class="navitem" data-view="extworker-Deia"><span class="dot"></span>Deia</button>
       <button class="navitem" data-view="extworker-Ayman"><span class="dot"></span>Ayman</button>
+      <div class="navlabel">Office Expenses</div>
+      <button class="navitem" data-view="officeexp-Michy"><span class="dot"></span>Michy</button>
+      <button class="navitem" data-view="officeexp-Deia"><span class="dot"></span>Deia</button>
+      <button class="navitem" data-view="officeexp-Ayman"><span class="dot"></span>Ayman</button>
       <div class="navlabel">Money</div>
       <button class="navitem" data-view="customers"><span class="dot"></span>Customers</button>
       <button class="navitem" data-view="paymentlog"><span class="dot"></span>Payment Log</button>
@@ -342,6 +346,9 @@
     <section class="view" id="view-extworker-Michy"></section>
     <section class="view" id="view-extworker-Deia"></section>
     <section class="view" id="view-extworker-Ayman"></section>
+    <section class="view" id="view-officeexp-Michy"></section>
+    <section class="view" id="view-officeexp-Deia"></section>
+    <section class="view" id="view-officeexp-Ayman"></section>
     <section class="view" id="view-customers"></section>
     <section class="view" id="view-paymentlog"></section>
     <section class="view" id="view-search"></section>
@@ -373,6 +380,7 @@
   state.customerAdjustments = state.customerAdjustments || {};
   state.accountAdjustments = state.accountAdjustments || { Michy:0, Deia:0, Ayman:0 };
   state.externalWorkerPayments = state.externalWorkerPayments || [];
+  state.officeExpenses = state.officeExpenses || []; // salary/water/electricity/taxes etc. — separate from External Account, never affects profit/debt
   state.releaseDates = state.releaseDates || {}; // shipment id -> ISO date the containers were released from customs
   state.consigneeNationality = state.consigneeNationality || {}; // consignee name (trimmed) -> 'IL' | 'PS'
   state.meta = state.meta || {};
@@ -454,6 +462,7 @@
       Object.keys(s.customerAdjustments||{}).length +
       Object.keys(s.creditLimits||{}).length +
       (s.externalWorkerPayments||[]).length +
+      (s.officeExpenses||[]).length +
       Object.keys(s.releaseDates||{}).length +
       Object.keys(s.consigneeNationality||{}).length;
   }
@@ -548,10 +557,11 @@
     if(ACCESS.full) return true;
     if(ACCESS.scope==='account'){
       return view==='overview' || view==='customers' || view==='paymentlog' || view==='search' || view==='statement' ||
-        view==='account-Deia' || view==='notfinished-Deia' || view==='extworker-Deia';
+        view==='account-Deia' || view==='notfinished-Deia' || view==='extworker-Deia' || view==='officeexp-Deia';
     }
     if(ACCESS.scope==='external-only'){
-      return view==='extworker-Michy' || view==='extworker-Deia' || view==='extworker-Ayman';
+      return view==='extworker-Michy' || view==='extworker-Deia' || view==='extworker-Ayman' ||
+        view==='officeexp-Michy' || view==='officeexp-Deia' || view==='officeexp-Ayman';
     }
     return false;
   }
@@ -615,6 +625,8 @@
   var NATIONALITY_FLAG = { IL:'🇮🇱', PS:'🇵🇸' }; // 🇮🇱 🇵🇸
   var extwPeriodFilter = "all"; // "all" | "week" | "month" | "year" — External Account tabs only
   var extwReasonFilter = "all"; // "all" | a specific reason string — External Account tabs only
+  var officeExpPeriodFilter = "all"; // "all" | "week" | "month" | "year" — Office Expenses tabs only
+  var officeExpReasonFilter = "all"; // "all" | a specific category string — Office Expenses tabs only
 
   // ---------- utils ----------
   function fmt(n){
@@ -1004,6 +1016,7 @@
     var titles = { overview:'Overview', 'account-Michy':'Michy · NASA Account', 'account-Deia':'Deia · NASA Account', 'account-Ayman':'Ayman · NASA Account',
       'notfinished-Michy':'Michy · Not Finish File', 'notfinished-Deia':'Deia · Not Finish File', 'notfinished-Ayman':'Ayman · Not Finish File',
       'extworker-Michy':'Michy · External Account', 'extworker-Deia':'Deia · External Account', 'extworker-Ayman':'Ayman · External Account',
+      'officeexp-Michy':'Michy · Office Expenses', 'officeexp-Deia':'Deia · Office Expenses', 'officeexp-Ayman':'Ayman · Office Expenses',
       customers:'Customers', paymentlog:'Payment Log', statement:'Customer Statement' };
     document.getElementById('pagetitle').textContent = titles[view] || view;
     var metas = {
@@ -1016,14 +1029,17 @@
       'extworker-Michy':"Unexpected amounts paid to external workers — subtracted from this account's profit",
       'extworker-Deia':"Unexpected amounts paid to external workers — subtracted from this account's profit",
       'extworker-Ayman':"Unexpected amounts paid to external workers — subtracted from this account's profit",
+      'officeexp-Michy':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
+      'officeexp-Deia':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
+      'officeexp-Ayman':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
       statement:'Printable summary — use Print / Save as PDF below to export it'
     };
     document.getElementById('pagemeta').textContent = metas[view] || 'Shipments, cost owed to NASA, and payments for this account';
     document.getElementById('globalsearch').placeholder = view==='paymentlog' ? 'Search payments by customer or agent…' : 'Search customer, container, file #…';
     // The global "+ Log Payment" button opens the customer/NASA payment modal —
-    // it doesn't apply on the External Account pages, which have their own
-    // "+ Log External Worker Payment" button instead.
-    document.getElementById('btn-log-payment').style.display = view.indexOf('extworker-')===0 ? 'none' : '';
+    // it doesn't apply on the External Account or Office Expenses pages, which
+    // have their own "+ Log" buttons instead.
+    document.getElementById('btn-log-payment').style.display = (view.indexOf('extworker-')===0 || view.indexOf('officeexp-')===0) ? 'none' : '';
   }
 
   document.getElementById('mainnav').addEventListener('click', function(e){
@@ -1346,6 +1362,81 @@
         '<tbody>'+rows+'</tbody></table></div></div>';
   }
 
+  // ---------- render: office expenses ----------
+  // Same look and feel as External Account above, but for ongoing company
+  // overhead (salary, water, electricity, taxes, etc.) rather than unexpected
+  // worker payments tied to a shipment — so there's no file/container
+  // matching here, and per Michy's instruction these amounts are kept
+  // separate from the account's Profit/Debt numbers rather than subtracted.
+  function renderOfficeExpenses(account){
+    var root = document.getElementById('view-officeexp-'+account);
+    var full = (state.officeExpenses||[]).filter(function(p){ return p.account===account; });
+
+    var reasonSet = {};
+    full.forEach(function(p){ if(p.reason) reasonSet[p.reason.trim()] = true; });
+    var reasons = Object.keys(reasonSet).sort(function(a,b){ return a.localeCompare(b); });
+
+    var now = new Date();
+    var dow = now.getDay();
+    var mondayOffset = dow===0 ? 6 : dow-1;
+    var monday = new Date(now.getFullYear(), now.getMonth(), now.getDate()-mondayOffset);
+    function pad2(n){ return n<10 ? '0'+n : ''+n; }
+    var weekStartStr = monday.getFullYear()+'-'+pad2(monday.getMonth()+1)+'-'+pad2(monday.getDate());
+    var monthStartStr = now.getFullYear()+'-'+pad2(now.getMonth()+1)+'-01';
+    var yearStartStr = now.getFullYear()+'-01-01';
+    var periodStart = officeExpPeriodFilter==='week' ? weekStartStr : officeExpPeriodFilter==='month' ? monthStartStr : officeExpPeriodFilter==='year' ? yearStartStr : null;
+
+    var list = full.filter(function(p){
+      if(periodStart && !(p.date >= periodStart)) return false;
+      if(officeExpReasonFilter!=='all' && (p.reason||'').trim()!==officeExpReasonFilter) return false;
+      return true;
+    });
+    if(searchTerm){
+      list = list.filter(function(p){
+        return ((p.reason||'')+' '+(p.payee||'')).toLowerCase().indexOf(searchTerm)>-1;
+      });
+    }
+    list = list.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+
+    // Missing `paid` on an entry means it predates this field — treat it as
+    // already paid rather than suddenly flagging old, settled entries as owing.
+    var paidTotal = list.reduce(function(a,p){ return p.paid!==false ? a+(Number(p.amount)||0) : a; }, 0);
+    var unpaidTotal = list.reduce(function(a,p){ return p.paid===false ? a+(Number(p.amount)||0) : a; }, 0);
+    var paidCount = list.filter(function(p){ return p.paid!==false; }).length;
+    var unpaidCount = list.filter(function(p){ return p.paid===false; }).length;
+
+    var periodLabels = { all:'All time', week:'This week', month:'This month', year:'This year' };
+    var periodBtns = ['all','week','month','year'].map(function(k){
+      return '<button type="button" data-officeexp-period="'+k+'" class="'+(officeExpPeriodFilter===k?'active':'')+'">'+periodLabels[k]+'</button>';
+    }).join('');
+    var reasonOptions = '<option value="all">All categories</option>'+reasons.map(function(r){
+      return '<option value="'+esc(r)+'" '+(officeExpReasonFilter===r?'selected':'')+'>'+esc(r)+'</option>';
+    }).join('');
+
+    var rows = list.length ? list.map(function(p){
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+'</td>'+
+        '<td style="text-align:center;"><label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">'+
+          '<input type="checkbox" class="officeexp-paid-cb" data-officeexp-paid="'+p.id+'" '+(p.paid!==false?'checked':'')+'>'+
+          '<span class="pill '+(p.paid!==false?'good':'warn')+'">'+(p.paid!==false?'Paid':'Need to pay')+'</span>'+
+        '</label></td>'+
+        '<td>'+esc(p.payee||'—')+'</td><td>'+esc(p.reason||'—')+'</td>'+
+        '<td><button class="btn small ghost danger" data-del-officeexp="'+p.id+'">Remove</button></td></tr>';
+    }).join('') : '<tr><td colspan="6" class="empty">No office expenses match'+(officeExpPeriodFilter!=='all'||officeExpReasonFilter!=='all'?' these filters':' yet for '+account)+'.</td></tr>';
+
+    root.innerHTML =
+      '<div class="grid-cards">'+
+        '<div class="card accent-'+account+'"><div class="card-label">Actually paid</div><div class="card-value row-neg">'+fmt(paidTotal)+'</div><div class="card-sub">'+paidCount+' of '+list.length+' entries · tracked separately, not subtracted from '+account+' profit</div></div>'+
+        '<div class="card accent-'+account+'"><div class="card-label">Need to Be Paid</div><div class="card-value" style="color:var(--warn);">'+fmt(unpaidTotal)+'</div><div class="card-sub">'+unpaidCount+' of '+list.length+' entries still owed</div></div>'+
+      '</div>'+
+      '<div class="section"><div class="section-head"><h2>Office Expenses — '+account+'</h2><button class="btn small primary" data-open-officeexp-pay="'+account+'">+ Log Office Expense</button></div>'+
+        '<div class="table-wrap" style="padding:14px 16px; margin-bottom:14px; display:flex; gap:12px; align-items:center; flex-wrap:wrap;">'+
+          '<div class="seg" style="max-width:380px;" id="officeexp-period-seg">'+periodBtns+'</div>'+
+          '<select id="officeexp-reason-filter" style="padding:7px 10px; border-radius:8px; border:1px solid var(--border); background:var(--surface); color:var(--ink); max-width:200px;">'+reasonOptions+'</select>'+
+        '</div>'+
+        '<div class="table-wrap"><table><thead><tr><th>Date</th><th class="num">Amount</th><th>Status</th><th>Paid to</th><th>Category</th><th></th></tr></thead>'+
+        '<tbody>'+rows+'</tbody></table></div></div>';
+  }
+
   function pagination(key, page, totalPages, total){
     if(total===0) return '';
     return '<div class="pagination"><div>Page '+(page+1)+' of '+totalPages+' · '+total+' rows</div><div class="pbtns">'+
@@ -1597,6 +1688,7 @@
     if(view==='overview') renderOverview();
     else if(view.indexOf('notfinished-')===0) renderNotFinished(view.slice(12));
     else if(view.indexOf('extworker-')===0) renderExternalWorker(view.slice(10));
+    else if(view.indexOf('officeexp-')===0) renderOfficeExpenses(view.slice(10));
     else if(view.indexOf('account-')===0) renderAccount(view.slice(8));
     else if(view==='customers') renderCustomers();
     else if(view==='paymentlog') renderPaymentLog();
@@ -1624,6 +1716,14 @@
       renderView(currentView);
       return;
     }
+    var officeExpPeriodBtn = e.target.closest('[data-officeexp-period]');
+    if(officeExpPeriodBtn){
+      officeExpPeriodFilter = officeExpPeriodBtn.dataset.officeexpPeriod;
+      renderView(currentView);
+      return;
+    }
+    var openOfficeExp = e.target.closest('[data-open-officeexp-pay]');
+    if(openOfficeExp){ openOfficeExpenseModal(openOfficeExp.dataset.openOfficeexpPay); return; }
     var openNasa = e.target.closest('[data-open-nasa-pay]');
     if(openNasa){ openPaymentModal('nasa', openNasa.dataset.openNasaPay); return; }
     var openCust = e.target.closest('[data-open-cust-pay]');
@@ -1675,11 +1775,26 @@
       });
       return;
     }
+    var delOfficeExp = e.target.closest('[data-del-officeexp]');
+    if(delOfficeExp){
+      var delOfficeExpId = delOfficeExp.dataset.delOfficeexp;
+      openConfirmModal('Remove this office expense? This cannot be undone.', function(){
+        state.officeExpenses = (state.officeExpenses||[]).filter(function(p){ return p.id!==delOfficeExpId; });
+        renderView(currentView);
+        persist('Expense removed.');
+      });
+      return;
+    }
   });
 
   document.addEventListener('change', function(e){
     if(e.target.id==='extw-reason-filter'){
       extwReasonFilter = e.target.value;
+      renderView(currentView);
+      return;
+    }
+    if(e.target.id==='officeexp-reason-filter'){
+      officeExpReasonFilter = e.target.value;
       renderView(currentView);
       return;
     }
@@ -1708,6 +1823,16 @@
         extwPaidEntry.paid = e.target.checked;
         renderView(currentView);
         persist(extwPaidEntry.paid ? 'Marked as paid.' : 'Marked as not yet paid.');
+      }
+      return;
+    }
+    if(e.target.classList.contains('officeexp-paid-cb')){
+      var officeExpPaidId = e.target.dataset.officeexpPaid;
+      var officeExpPaidEntry = (state.officeExpenses||[]).find(function(p){ return p.id===officeExpPaidId; });
+      if(officeExpPaidEntry){
+        officeExpPaidEntry.paid = e.target.checked;
+        renderView(currentView);
+        persist(officeExpPaidEntry.paid ? 'Marked as paid.' : 'Marked as not yet paid.');
       }
       return;
     }
@@ -1895,6 +2020,53 @@
     setTimeout(function(){ var f = document.getElementById('extw-amount'); if(f) f.focus(); },10);
   }
 
+  function openOfficeExpenseModal(presetAccount){
+    var root = document.getElementById('modal-root');
+    root.innerHTML =
+      '<div class="overlay" id="officeexp-overlay">'+
+        '<div class="modal">'+
+          '<h3>Log office expense</h3>'+
+          '<div class="modal-sub">Ongoing office costs — salary, water, electricity, taxes and the like.</div>'+
+          '<form id="officeexp-form">'+
+            '<div class="field"><label for="officeexp-account">Account</label>'+
+              '<select id="officeexp-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
+            '</div>'+
+            '<div class="field"><label for="officeexp-payee">Paid to</label><input type="text" id="officeexp-payee" name="payee" placeholder="e.g. employee name, electric company" required></div>'+
+            '<div class="field"><label for="officeexp-amount">Amount</label><input type="number" step="0.01" min="0.01" id="officeexp-amount" name="amount" placeholder="0.00" required></div>'+
+            '<div class="field"><label for="officeexp-date">Date</label><input type="date" id="officeexp-date" name="date" value="'+todayISO()+'" required></div>'+
+            '<div class="field"><label for="officeexp-reason">Category</label><input type="text" id="officeexp-reason" name="reason" placeholder="e.g. Salary, Water, Electricity, Taxes" required></div>'+
+            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="officeexp-paid" checked style="width:auto;">Already paid</label></div>'+
+            '<div class="modal-actions">'+
+              '<button type="button" class="btn ghost" id="officeexp-cancel">Cancel</button>'+
+              '<button type="submit" class="btn primary">Save entry</button>'+
+            '</div>'+
+          '</form>'+
+        '</div>'+
+      '</div>';
+
+    document.getElementById('officeexp-cancel').addEventListener('click', closeModal);
+    document.getElementById('officeexp-overlay').addEventListener('click', function(e){ if(e.target.id==='officeexp-overlay') closeModal(); });
+    document.getElementById('officeexp-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var amount = parseFloat(document.getElementById('officeexp-amount').value);
+      var date = document.getElementById('officeexp-date').value;
+      var payee = document.getElementById('officeexp-payee').value.trim();
+      var reason = document.getElementById('officeexp-reason').value.trim();
+      var account = document.getElementById('officeexp-account').value;
+      if(!amount || amount<=0){ toast('Enter an amount greater than 0.', true); return; }
+      if(!payee){ toast('Enter who was paid.', true); return; }
+      if(!reason){ toast('Enter a category for this expense.', true); return; }
+      if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
+      var paid = document.getElementById('officeexp-paid').checked;
+      state.officeExpenses = state.officeExpenses || [];
+      state.officeExpenses.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, paid:paid });
+      closeModal();
+      renderView(currentView);
+      persist('Office expense logged.');
+    });
+    setTimeout(function(){ var f = document.getElementById('officeexp-amount'); if(f) f.focus(); },10);
+  }
+
   document.addEventListener('keydown', function(e){ if(e.key==='Escape') closeModal(); });
 
   // ---------- init ----------
@@ -1938,6 +2110,7 @@
       state.customerAdjustments = state.customerAdjustments || {};
       state.accountAdjustments = state.accountAdjustments || { Michy:0, Deia:0, Ayman:0 };
       state.externalWorkerPayments = state.externalWorkerPayments || [];
+      state.officeExpenses = state.officeExpenses || [];
       state.releaseDates = state.releaseDates || {};
       state.consigneeNationality = state.consigneeNationality || {};
       state.meta = state.meta || {};
