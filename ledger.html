@@ -514,7 +514,7 @@
 
     // Always save to the shared Supabase row first — this is what makes the
     // ledger editable from octopus-track.com as well as from here.
-    var cloudSave = sbSaveLedger({ shipments: shipments, notFinished: notFinished, state: state });
+    var cloudSave = sbSaveLedger(state);
 
     if(!window.claude || !window.claude.use){
       return cloudSave.then(function(ok){
@@ -1382,14 +1382,12 @@
   // Pull the authoritative cloud copy (shared with octopus-track.com) and
   // refresh once it's in, so edits made on either side are always reflected.
   sbLoadLedger().then(function(cloud){
-    if(!cloud || !cloud.state){
+    if(!cloud){
       // Nothing saved to the cloud yet — seed it with what's embedded here.
-      sbSaveLedger({ shipments: shipments, notFinished: notFinished, state: state });
+      sbSaveLedger(state);
       return;
     }
-    shipments = cloud.shipments || shipments;
-    notFinished = cloud.notFinished || notFinished;
-    state = cloud.state || state;
+    state = cloud;
     state.customerPayments = state.customerPayments || [];
     state.nasaPayments = state.nasaPayments || [];
     state.creditLimits = state.creditLimits || {};
