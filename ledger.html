@@ -388,12 +388,25 @@
       .catch(function(e){ console.error('sbLoadLedger:', e); return null; });
   }
 
+  // Returns {ok, detail} instead of a plain boolean, so a failure can show the
+  // real reason (e.g. a Supabase permission error) instead of a generic message.
   function sbSaveLedger(payload){
     return fetch(LEDGER_SB_URL + '/rest/v1/app_settings', {
       method: 'POST',
       headers: { ...LEDGER_SB_HEADERS, 'Prefer': 'resolution=merge-duplicates' },
       body: JSON.stringify({ key: LEDGER_SB_SETTING_KEY, value: JSON.stringify(payload) })
-    }).then(function(res){ return res.ok; }).catch(function(e){ console.error('sbSaveLedger:', e); return false; });
+    }).then(function(res){
+      if(res.ok) return { ok:true, detail:null };
+      return res.text().then(function(txt){
+        var msg = txt;
+        try { var j = JSON.parse(txt); msg = j.message || j.hint || j.details || txt; } catch(e){}
+        console.error('sbSaveLedger failed:', res.status, txt);
+        return { ok:false, detail: res.status + ': ' + (msg || 'unknown error').slice(0,160) };
+      });
+    }).catch(function(e){
+      console.error('sbSaveLedger:', e);
+      return { ok:false, detail: (e && e.message) || 'network error' };
+    });
   }
 
   var currentView = "overview";
@@ -517,21 +530,21 @@
     var cloudSave = sbSaveLedger(state);
 
     if(!window.claude || !window.claude.use){
-      return cloudSave.then(function(ok){
-        if(ok){ if(successMsg) toast(successMsg); }
-        else { toast('Could not save. Please check your connection and try again.', true); }
+      return cloudSave.then(function(result){
+        if(result.ok){ if(successMsg) toast(successMsg); }
+        else { toast('Could not save — ' + result.detail, true); }
       });
     }
     return window.claude.use('artifact').then(function(artifact){
       if(!artifact){
-        return cloudSave.then(function(ok){
-          if(ok){ if(successMsg) toast(successMsg); }
-          else { toast('Could not save. Please check your connection and try again.', true); }
+        return cloudSave.then(function(result){
+          if(result.ok){ if(successMsg) toast(successMsg); }
+          else { toast('Could not save — ' + result.detail, true); }
         });
       }
-      return cloudSave.then(function(cloudOk){
+      return cloudSave.then(function(result){
         return artifact.publish(fullDoc).then(function(){
-          if(successMsg) toast(cloudOk ? successMsg : successMsg + ' (cloud sync failed — will retry next save)');
+          if(successMsg) toast(result.ok ? successMsg : successMsg + ' (cloud sync failed — ' + result.detail + ')');
         });
       }).catch(function(err){
         var code = err && err.code;
