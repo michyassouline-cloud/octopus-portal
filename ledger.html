@@ -282,6 +282,15 @@
   @page{ margin:1in; }
   @media print{
     :root{ --bg:#fff; --surface:#fff; --surface-2:#f2f3f0; --surface-3:#e8e9e4; --border:#ccc; --ink:#111; --ink-dim:#444; --ink-faint:#777; }
+    /* Chrome's print dialog has a "Background graphics" checkbox that is
+       OFF by default -- with it off, every background-color (the pastel
+       card tints, pill badges, bar-chart fills) silently drops out of the
+       printed/PDF output even though border colors still show, which is
+       exactly the "old layout without the colors" look. This CSS property
+       tells the browser to print backgrounds regardless of that checkbox,
+       so the color coding always survives without the person needing to
+       remember to turn anything on. */
+    *{ -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; color-adjust:exact !important; }
     body{ background:#fff !important; }
     .sidebar, .topbar, .no-print, .toastwrap{ display:none !important; }
     main{ padding:0 !important; max-width:none !important; margin:0 !important; }
