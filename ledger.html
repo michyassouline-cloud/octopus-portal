@@ -369,7 +369,7 @@
   var PRISTINE_HTML = document.documentElement.outerHTML;
 
   var ACCOUNTS = ["Michy","Deia","Ayman"];
-  var ACCOUNT_COLOR = { Michy:"#3E7CB1", Deia:"#B1723E", Ayman:"#7A5CB8" };
+  var ACCOUNT_COLOR = { Michy:"#3E7CB1", Deia:"#B1723E", Ayman:"#7A5CB8", Unassigned:"#9C6B12" };
 
   var shipments = JSON.parse(document.getElementById('shipments-data').textContent);
   var notFinished = JSON.parse(document.getElementById('notfinished-data').textContent);
@@ -384,6 +384,8 @@
   state.releaseDates = state.releaseDates || {}; // shipment id -> ISO date the containers were released from customs
   state.consigneeNationality = state.consigneeNationality || {}; // consignee name (trimmed) -> 'IL' | 'PS'
   state.meta = state.meta || {};
+  migrateCustomerAccountScoping();
+  seedKnownCombinedCustomers();
 
   // ---------- cloud sync (Supabase) ----------
   // Same Supabase project octopus-track.com already uses. Shared row means the
@@ -434,6 +436,18 @@
   function sbPushCustomerBalances(){
     var list = customerAggregates();
     if(!list.length) return Promise.resolve();
+    // Guard: if the same name is shared by more than one of our own
+    // (account, customer) records — two genuinely different customers in
+    // different accounts who happen to use the same name/code, or one not
+    // yet resolved out of "Unassigned" — we don't know which one is the
+    // real customer_id on octopus-track.com. Pushing either would silently
+    // misattribute the other one's balance to that login. Skip those names
+    // entirely rather than guess; they still show up inside the Ledger
+    // itself (Customers page) for Michy to resolve by hand.
+    var nameCount = {};
+    list.forEach(function(m){ nameCount[m.customer] = (nameCount[m.customer]||0) + 1; });
+    list = list.filter(function(m){ return nameCount[m.customer]===1 && !m.needsReview; });
+    if(!list.length) return Promise.resolve();
     var now = new Date().toISOString();
     var rows = list.map(function(m){
       return {
@@ -458,9 +472,22 @@
   // should only ever grow, never quietly vanish because of a bad sync.
   function sbStateRecordCount(s){
     if(!s) return 0;
+    // creditLimits/customerAdjustments can be either the legacy flat shape
+    // ({name: number}, pre account-scoping) or the current nested shape
+    // ({account: {name: number}}) — count real entries either way so this
+    // never under-counts a copy just because it hasn't been migrated yet.
+    function leafCount(map){
+      var n = 0;
+      Object.keys(map||{}).forEach(function(k){
+        var v = map[k];
+        if(v && typeof v === 'object') n += Object.keys(v).length;
+        else n += 1;
+      });
+      return n;
+    }
     return (s.customerPayments||[]).length + (s.nasaPayments||[]).length +
-      Object.keys(s.customerAdjustments||{}).length +
-      Object.keys(s.creditLimits||{}).length +
+      leafCount(s.customerAdjustments) +
+      leafCount(s.creditLimits) +
       (s.externalWorkerPayments||[]).length +
       (s.officeExpenses||[]).length +
       Object.keys(s.releaseDates||{}).length +
@@ -597,6 +624,7 @@
   }
 
   var statementCustomerName = null; // which customer the printable statement view is currently showing
+  var statementCustomerAccount = null; // which account that customer belongs to
   var statementFrom = ""; // ISO date — empty means unbounded. Filters the statement by arrival/payment date.
   var statementTo = "";
   var CATEGORY_PALETTE = ['#3E7CB1','#B1723E','#7A5CB8','#2C7A54','#9C6B12','#AE3838','#0E5C56','#8A968D'];
@@ -635,6 +663,13 @@
     var s = Math.round(Math.abs(n)).toLocaleString('en-US');
     return (neg?'−':'') + s;
   }
+  // Any logged payment/expense can be entered as a negative amount to record
+  // money moving the other way (a refund, an over-payment handed back, a
+  // correction) — shown next to the amount so it's never mistaken for a
+  // typo'd normal payment.
+  function reimbursementBadge(amount){
+    return (Number(amount)||0) < 0 ? ' <span class="pill warn">Reimbursement</span>' : '';
+  }
   function fmtDate(iso){
     if(!iso) return '—';
     var d = new Date(iso+'T00:00:00');
@@ -664,12 +699,22 @@
     }
     var nasaPaid = 0;
     state.nasaPayments.forEach(function(p){ if(p.account===account) nasaPaid += Number(p.amount)||0; });
-    var extPaid = 0;
-    (state.externalWorkerPayments||[]).forEach(function(p){ if(p.account===account) extPaid += Number(p.amount)||0; });
+    var extPaid = 0, extPaidTotal = 0;
+    // A payment with a typed file/container number (.ref) is already counted
+    // in that file's own Paid + Additional Cost totals, so it must NOT also
+    // be subtracted here from the account's profit -- only untied amounts
+    // (no file reference) reduce profit. extPaidTotal keeps the full sum
+    // (all external worker payments, tied or not) for bookkeeping displays.
+    (state.externalWorkerPayments||[]).forEach(function(p){
+      if(p.account!==account) return;
+      var amt = Number(p.amount)||0;
+      extPaidTotal += amt;
+      if(!(p.ref && p.ref.trim())) extPaid += amt;
+    });
     var adj = Number(state.accountAdjustments[account]) || 0;
     var totalCost = paid + addCost; // what's actually owed to NASA per shipment: Paid + Additional Cost
-    var profit = grossProfit - extPaid; // net of unexpected amounts paid to external workers
-    return { sold:sold, paid:paid, profit:profit, grossProfit:grossProfit, extPaid:extPaid, addCost:addCost, totalCost:totalCost, count:count, nasaPaid:nasaPaid, adjustment:adj, debt: totalCost - nasaPaid + adj };
+    var profit = grossProfit - extPaid; // net of unexpected amounts paid to external workers (file-tied ones excluded)
+    return { sold:sold, paid:paid, profit:profit, grossProfit:grossProfit, extPaid:extPaid, extPaidTotal:extPaidTotal, addCost:addCost, totalCost:totalCost, count:count, nasaPaid:nasaPaid, adjustment:adj, debt: totalCost - nasaPaid + adj };
   }
 
   // Looks up which shipment (finished or not-yet-invoiced) a typed file number or
@@ -693,29 +738,175 @@
     return null;
   }
 
+  // One-time migration so a customer's money is always scoped to a single
+  // NASA account. Historically a payment/credit-limit/adjustment was keyed
+  // only by customer name — so if two different real customers in two
+  // different accounts (Michy/Deia/Ayman) happened to share the same name or
+  // code in the spreadsheet, their money got silently combined into one
+  // balance. This runs once per load: when a name only ever appears under
+  // one account in the shipment data, that's unambiguous and gets filled in
+  // automatically; when a name appears under more than one account (or
+  // under none at all, e.g. a payment logged with a typo'd name), it's
+  // tagged "Unassigned" instead of guessed at, and shows up on the
+  // Customers page for Michy to resolve by hand. Safe to call repeatedly —
+  // already-migrated records are left untouched.
+  function migrateCustomerAccountScoping(){
+    var nameAccounts = {};
+    shipments.concat(notFinished).forEach(function(s){
+      var name = (s.customer||'').trim();
+      if(!name) return;
+      nameAccounts[name] = nameAccounts[name] || {};
+      nameAccounts[name][s.account] = true;
+    });
+    function resolveAccount(name){
+      var accts = Object.keys(nameAccounts[name]||{});
+      return accts.length===1 ? accts[0] : null;
+    }
+    (state.customerPayments||[]).forEach(function(p){
+      if(p.account) return;
+      p.account = resolveAccount((p.customer||'').trim()) || 'Unassigned';
+    });
+    function migrateNameMap(map){
+      var isLegacyShape = Object.keys(map||{}).some(function(k){ return typeof map[k] === 'number'; });
+      if(!isLegacyShape) return map || {};
+      var next = {};
+      Object.keys(map).forEach(function(name){
+        var acct = resolveAccount(name) || 'Unassigned';
+        next[acct] = next[acct] || {};
+        next[acct][name] = map[name];
+      });
+      return next;
+    }
+    state.creditLimits = migrateNameMap(state.creditLimits);
+    state.customerAdjustments = migrateNameMap(state.customerAdjustments);
+  }
+
+  // One known, confirmed exception to "same name in two accounts = two
+  // different customers": a real customer who genuinely places orders
+  // through more than one of your accounts. Names in state.multiAccountCustomers
+  // are pooled back into a single customer (one combined balance, one
+  // statement) instead of being split or flagged for review — see
+  // markCustomerAsCombined/unmarkCustomerAsCombined, and the "Combine" /
+  // "Split" buttons on the Customers page. This never touches each account's
+  // own NASA debt/profit totals (accountTotals) — those still come straight
+  // from each shipment's own .account field, untouched.
+  function isCombinedCustomer(name){ return !!(state.multiAccountCustomers||{})[name]; }
+
+  // Moves any existing credit limit / opening-balance adjustment for `name` —
+  // wherever it happens to be stored (a specific account, or "Unassigned") —
+  // into one canonical "Combined" bucket, so there's a single number left to
+  // edit from then on instead of several scattered, possibly stale ones.
+  function consolidateCombinedFinancials(name){
+    ['creditLimits','customerAdjustments'].forEach(function(field){
+      var found = null;
+      Object.keys(state[field]||{}).forEach(function(acct){
+        if(acct==='Combined') return;
+        var bucket = state[field][acct];
+        if(bucket && bucket[name] != null){
+          if(found==null) found = bucket[name];
+          delete bucket[name];
+        }
+      });
+      if(found != null){
+        state[field].Combined = state[field].Combined || {};
+        if(state[field].Combined[name] == null) state[field].Combined[name] = found;
+      }
+    });
+  }
+  function markCustomerAsCombined(name){
+    state.multiAccountCustomers = state.multiAccountCustomers || {};
+    if(state.multiAccountCustomers[name]) return;
+    state.multiAccountCustomers[name] = true;
+    consolidateCombinedFinancials(name);
+  }
+  // One-time seed: Michy confirmed "37" (Ayman/Deia) and "Mohammad Dweik"
+  // (Ayman/Michy) are each genuinely one real customer who orders through
+  // more than one account, not a name collision. Runs exactly once ever
+  // (guarded by state.meta.seededKnownCombinedCustomers) so splitting one of
+  // these back apart later via the UI sticks, instead of being silently
+  // re-combined on the next load.
+  function seedKnownCombinedCustomers(){
+    if(state.meta.seededKnownCombinedCustomers) return;
+    state.meta.seededKnownCombinedCustomers = true;
+    ['37','Mohammad Dweik'].forEach(function(name){ markCustomerAsCombined(name); });
+  }
+  function unmarkCustomerAsCombined(name){
+    if(!state.multiAccountCustomers) return;
+    delete state.multiAccountCustomers[name];
+    // Leave any "Combined" value as "Unassigned" rather than guessing which
+    // account it belongs to now that it's split back apart — it'll show up
+    // on the Needs Review row for Michy to resolve by hand.
+    ['creditLimits','customerAdjustments'].forEach(function(field){
+      if(state[field].Combined && state[field].Combined[name] != null){
+        state[field].Unassigned = state[field].Unassigned || {};
+        state[field].Unassigned[name] = state[field].Combined[name];
+        delete state[field].Combined[name];
+      }
+    });
+  }
+  // Every real NASA account a name shows up under in the shipment data —
+  // used to resolve what "Combined" actually means for a given customer
+  // (which accounts' containers/payments to pull into their one statement).
+  function accountsForCustomerName(name){
+    var accts = {};
+    shipments.concat(notFinished).forEach(function(s){ if((s.customer||'').trim()===name) accts[s.account] = true; });
+    return Object.keys(accts).sort();
+  }
+  // Turns the "account" tag carried around in the UI (a real account name,
+  // or the sentinel "Combined") back into the actual list of accounts whose
+  // shipments/payments belong to this customer.
+  function resolveCustomerAccounts(accountTag, name){
+    return accountTag === 'Combined' ? accountsForCustomerName(name) : [accountTag];
+  }
+
   function customerAggregates(){
     var map = {};
+    function keyOf(account, name){ return account+'\u0001'+name; }
+    function groupKey(account, name, combined){ return combined ? ('Combined\u0001'+name) : keyOf(account, name); }
     shipments.forEach(function(s){
-      var key = s.customer && s.customer.trim();
-      if(!key) return;
-      if(!map[key]) map[key] = { customer:key, sold:0, count:0, accounts:{} };
-      map[key].sold += s.sold;
-      map[key].count += 1;
-      map[key].accounts[s.account] = true;
+      var name = s.customer && s.customer.trim();
+      if(!name) return;
+      var combined = isCombinedCustomer(name);
+      var k = groupKey(s.account, name, combined);
+      if(!map[k]) map[k] = { customer:name, account: combined ? 'Combined' : s.account, accounts:{}, isCombined:combined, sold:0, count:0 };
+      map[k].sold += s.sold;
+      map[k].count += 1;
+      map[k].accounts[s.account] = true;
     });
     state.customerPayments.forEach(function(p){
-      var key = p.customer && p.customer.trim();
-      if(!key) return;
-      if(!map[key]) map[key] = { customer:key, sold:0, count:0, accounts:{} };
-      map[key].paid = (map[key].paid||0) + (Number(p.amount)||0);
+      var name = p.customer && p.customer.trim();
+      if(!name) return;
+      var combined = isCombinedCustomer(name);
+      var acct = p.account || 'Unassigned';
+      var k = groupKey(acct, name, combined);
+      if(!map[k]) map[k] = { customer:name, account: combined ? 'Combined' : acct, accounts:{}, isCombined:combined, sold:0, count:0 };
+      map[k].paid = (map[k].paid||0) + (Number(p.amount)||0);
+      if(acct!=='Unassigned') map[k].accounts[acct] = true;
+    });
+    // Also seed any customer that only has a credit limit or opening-balance
+    // adjustment on file (no shipments, no payments yet) so that data is
+    // never silently dropped from view.
+    ['creditLimits','customerAdjustments'].forEach(function(field){
+      Object.keys(state[field]||{}).forEach(function(acct){
+        Object.keys(state[field][acct]||{}).forEach(function(name){
+          var combined = isCombinedCustomer(name);
+          var k = groupKey(acct, name, combined);
+          if(!map[k]) map[k] = { customer:name, account: combined ? 'Combined' : acct, accounts:{}, isCombined:combined, sold:0, count:0 };
+          if(acct!=='Unassigned' && acct!=='Combined') map[k].accounts[acct] = true;
+        });
+      });
     });
     var list = Object.keys(map).map(function(k){
       var m = map[k];
       m.paid = m.paid || 0;
-      m.adjustment = Number(state.customerAdjustments[k]) || 0;
+      var finAcct = m.isCombined ? 'Combined' : m.account;
+      m.adjustment = Number((state.customerAdjustments[finAcct]||{})[m.customer]) || 0;
       m.balance = m.sold - m.paid + m.adjustment;
-      m.limit = state.creditLimits[k] != null ? Number(state.creditLimits[k]) : null;
-      m.accountList = Object.keys(m.accounts);
+      var lim = (state.creditLimits[finAcct]||{})[m.customer];
+      m.limit = lim != null ? Number(lim) : null;
+      m.accountList = m.isCombined ? (Object.keys(m.accounts).length ? Object.keys(m.accounts).sort() : accountsForCustomerName(m.customer)) : [m.account];
+      m.needsReview = (m.account === 'Unassigned');
+      delete m.accounts;
       return m;
     });
     return list;
@@ -735,10 +926,12 @@
   // comma-separated) so the container count and category breakdown below are accurate.
   // One row per shipment/file (not per container) — the Container # column shows
   // just the first container, and a separate column shows how many it has.
-  function customerContainerRows(name){
+  function customerContainerRows(accountTag, name){
+    var accts = resolveCustomerAccounts(accountTag, name);
     var rows = [];
     function pushFrom(list, finished){
       list.forEach(function(s){
+        if(accts.indexOf(s.account)===-1) return;
         if((s.customer||'').trim()!==name) return;
         // A flat 2000 is a nominal "name use" fee, not a real sale for this
         // customer — leave it out of the statement entirely.
@@ -774,6 +967,48 @@
       .sort(function(a,b){ return b.count-a.count; });
   }
 
+  // Sums invoiced $ sold per goods category — the money-side view of the
+  // same breakdown above (which counts containers, not amounts).
+  function customerCategoryAmountBreakdown(rows){
+    var sums = {};
+    rows.forEach(function(r){ if(!r.finished) return; sums[r.goods] = (sums[r.goods]||0) + (r.sold||0); });
+    return Object.keys(sums).map(function(k){ return {label:k, amount:sums[k]}; })
+      .sort(function(a,b){ return b.amount-a.amount; });
+  }
+
+  // One shared category -> color map so the bar list and the pie/donut below
+  // always color the same category the same way, however each one is sorted.
+  function categoryColorMap(labels){
+    var map = {};
+    labels.slice().sort().forEach(function(label, i){ map[label] = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length]; });
+    return map;
+  }
+
+  // Multi-slice donut (built the same way as the progress rings below —
+  // stacked stroke-dasharray arcs around one circle) showing $ sold by
+  // category. No external chart library needed.
+  function categoryDonutSVG(breakdown, colorMap){
+    var total = breakdown.reduce(function(a,b){ return a+b.amount; }, 0);
+    var r = 50, cx = 60, cy = 60, sw = 22;
+    var circ = 2*Math.PI*r;
+    var arcs = '';
+    if(total > 0){
+      var offset = 0;
+      arcs = breakdown.map(function(b){
+        var len = circ * (b.amount/total);
+        var html = '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="'+(colorMap[b.label]||'#888')+'" stroke-width="'+sw+'" stroke-dasharray="'+len+' '+(circ-len)+'" stroke-dashoffset="'+(-offset)+'" transform="rotate(-90 '+cx+' '+cy+')"/>';
+        offset += len;
+        return html;
+      }).join('');
+    }
+    return '<svg viewBox="0 0 120 120" width="140" height="140" style="flex:none">'+
+      '<circle cx="'+cx+'" cy="'+cy+'" r="'+r+'" fill="none" stroke="var(--surface-3)" stroke-width="'+sw+'"/>'+
+      arcs+
+      '<text x="60" y="56" text-anchor="middle" style="font-family:var(--font-mono);font-size:14px;font-weight:600;fill:var(--ink)">'+fmt(total)+'</text>'+
+      '<text x="60" y="71" text-anchor="middle" style="font-family:var(--font-body);font-size:8px;letter-spacing:.03em;fill:var(--ink-faint)">BY CATEGORY</text>'+
+    '</svg>';
+  }
+
   // Counts FILES (not containers) by the consignee's Israeli/Palestinian
   // classification, for the single two-color stacked bar.
   function customerNationalityBreakdown(rows){
@@ -789,15 +1024,13 @@
     return true;
   }
 
-  function showCustomerStatement(name){
-    if(!ACCESS.full){
-      var m0 = customerAggregates().filter(function(x){ return x.customer===name; })[0];
-      var allowed0 = accessibleAccounts();
-      if(!m0 || !(m0.accountList||[]).some(function(a){ return allowed0.indexOf(a)>-1; })){
-        toast('Not available for your account.', true);
-        return;
-      }
+  function showCustomerStatement(accountTag, name){
+    var accts = resolveCustomerAccounts(accountTag, name);
+    if(!ACCESS.full && !accts.some(function(a){ return accessibleAccounts().indexOf(a)>-1; })){
+      toast('Not available for your account.', true);
+      return;
     }
+    statementCustomerAccount = accountTag;
     statementCustomerName = name;
     statementFrom = "";
     statementTo = "";
@@ -805,15 +1038,17 @@
     document.querySelectorAll('.view').forEach(function(v){ v.classList.remove('active'); });
     document.getElementById('view-statement').classList.add('active');
     currentView = 'statement';
-    document.getElementById('pagetitle').textContent = 'Customer statement — '+name;
+    document.getElementById('pagetitle').textContent = 'Customer statement — '+name+' ('+accts.join(' + ')+')';
     document.getElementById('pagemeta').textContent = 'Printable summary — use Print / Save as PDF below to export it';
     document.getElementById('btn-log-payment').style.display = 'none';
-    renderCustomerStatement(name);
+    renderCustomerStatement(accountTag, name);
   }
 
-  function renderCustomerStatement(name){
+  function renderCustomerStatement(accountTag, name){
     var root = document.getElementById('view-statement');
-    var allRows = customerContainerRows(name);
+    var isCombined = accountTag === 'Combined';
+    var accts = resolveCustomerAccounts(accountTag, name);
+    var allRows = customerContainerRows(accountTag, name);
 
     var yearsSet = {};
     allRows.forEach(function(r){ if(r.arrivalDate) yearsSet[r.arrivalDate.slice(0,4)] = true; });
@@ -837,19 +1072,43 @@
     // Matches the rest of the ledger's convention: a not-yet-invoiced file isn't
     // counted as money owed yet, only once it's actually been billed.
     var sold = rows.filter(function(r){ return r.finished; }).reduce(function(a,r){ return a+r.sold; }, 0);
-    var paidList = (state.customerPayments||[]).filter(function(p){ return (p.customer||'').trim()===name; });
+    var paidList = (state.customerPayments||[]).filter(function(p){
+      if((p.customer||'').trim()!==name) return false;
+      // A combined customer pools every payment logged under this name,
+      // whichever account it happens to carry (including old, never-resolved
+      // "Unassigned" ones) — there's only one real customer here, so there's
+      // nothing left to disambiguate.
+      return isCombined || p.account===accountTag;
+    });
     var paidRows = hasFilter ? paidList.filter(function(p){ return statementInRange(p.date, statementFrom, statementTo); }) : paidList;
     var paid = paidRows.reduce(function(a,p){ return a+(Number(p.amount)||0); }, 0);
     paidRows = paidRows.slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
-    var adjustment = Number(state.customerAdjustments[name]) || 0;
+    var finAcct = isCombined ? 'Combined' : accountTag;
+    var adjustment = Number((state.customerAdjustments[finAcct]||{})[name]) || 0;
     var balance = sold - paid + adjustment;
-    var limit = state.creditLimits[name] != null ? Number(state.creditLimits[name]) : null;
+    var limitRaw = (state.creditLimits[finAcct]||{})[name];
+    var limit = limitRaw != null ? Number(limitRaw) : null;
     var st = customerStatus({ balance:balance, limit:limit });
 
-    var bars = breakdown.map(function(b, i){
+    var amountBreakdown = customerCategoryAmountBreakdown(rows);
+    var categoryColor = categoryColorMap(breakdown.map(function(b){ return b.label; }).concat(amountBreakdown.map(function(b){ return b.label; })));
+    var amountTotal = amountBreakdown.reduce(function(a,b){ return a+b.amount; }, 0);
+
+    var bars = breakdown.map(function(b){
       var pct = Math.max(4, Math.round(b.count/maxCount*100));
-      var color = CATEGORY_PALETTE[i % CATEGORY_PALETTE.length];
+      var color = categoryColor[b.label];
       return '<div class="bar-row"><div>'+goodsLabel(b.label)+'</div><div class="bar-track"><div class="bar-fill" style="width:'+pct+'%; background:'+color+'"></div></div><div class="num">'+b.count+'</div></div>';
+    }).join('');
+
+    var categoryDonut = categoryDonutSVG(amountBreakdown, categoryColor);
+    var categoryLegend = amountBreakdown.map(function(b){
+      var pct = amountTotal ? Math.round(b.amount/amountTotal*100) : 0;
+      return '<div style="display:flex; align-items:center; gap:8px; margin-bottom:6px; font-size:12.5px;">'+
+        '<span style="width:10px;height:10px;border-radius:3px;background:'+categoryColor[b.label]+';flex:none;"></span>'+
+        '<span style="flex:1;">'+goodsLabel(b.label)+'</span>'+
+        '<span class="num" style="font-weight:600;">'+fmt(b.amount)+'</span>'+
+        '<span class="muted" style="width:34px;text-align:right;">'+pct+'%</span>'+
+      '</div>';
     }).join('');
 
     // One stacked two-(or three-)color bar: share of files by consignee nationality.
@@ -872,7 +1131,7 @@
     // balance adjustment — so "Total paid" / "Total debt" are never a mystery
     // number with no entries behind them.
     var paymentRows = paidRows.map(function(p){
-      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num">'+fmt(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td></tr>';
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num">'+fmt(p.amount)+reimbursementBadge(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td></tr>';
     }).join('');
     var adjustmentRow = adjustment ? '<tr><td class="muted">—</td><td class="num'+(adjustment<0?'':' row-neg')+'">'+fmt(adjustment)+'</td><td>'+bi('Account adjustment — manual balance correction entered for this customer','تعديل الحساب — تصحيح يدوي للرصيد تم إدخاله لهذا العميل')+'</td></tr>' : '';
     var hasPaymentRows = !!(paymentRows || adjustmentRow);
@@ -916,7 +1175,7 @@
       '</div>'+
       '<div>'+
         '<div style="display:flex; justify-content:space-between; align-items:baseline; margin-bottom:22px; border-bottom:2px solid var(--border); padding-bottom:14px;">'+
-          '<div><h1 style="font-size:22px;">'+esc(name)+'</h1><div class="meta" style="margin-top:4px;">'+bi('Octopus · Shipment Finance — Customer Statement','أوكتوباس · تمويل الشحنات — كشف حساب العميل')+'</div></div>'+
+          '<div><h1 style="font-size:22px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">'+esc(name)+accts.map(function(a){ return '<span class="pill no-print" style="background:'+ACCOUNT_COLOR[a]+'22;color:'+ACCOUNT_COLOR[a]+'">'+a+'</span>'; }).join('')+'</h1><div class="meta" style="margin-top:4px;">'+bi('Octopus · Shipment Finance — Customer Statement','أوكتوباس · تمويل الشحنات — كشف حساب العميل')+(isCombined?' · one real customer across accounts':'')+'</div></div>'+
           '<div style="text-align:right; font-size:12px; color:var(--ink-faint);">'+bi('Generated','تاريخ الإصدار')+' '+fmtDate(todayISO())+(hasFilter?'<br>'+bi('Period','الفترة')+': '+(statementFrom?fmtDate(statementFrom):'…')+' – '+(statementTo?fmtDate(statementTo):'…'):'')+'</div>'+
         '</div>'+
         '<div class="grid-cards">'+
@@ -935,7 +1194,11 @@
             '<div class="card"><div class="card-label">'+bi('Held at port — payment due','محتجزة في الميناء — الدفع مستحق')+'</div><div class="card-value row-neg">'+fmt(dueSold)+'</div><div class="card-sub">'+bi('Still sitting at the port — released once paid (or not invoiced yet)','لا تزال في الميناء — يتم الإفراج عنها بعد الدفع (أو لم تتم فوترتها بعد)')+'</div></div>'+
           '</div>'+
         '</div>'+
-        (breakdown.length ? '<div class="section"><div class="section-head"><h2>'+bi('Containers by category','الحاويات حسب الفئة')+'</h2><span class="hint">'+containerTotal+' '+bi('containers total','إجمالي الحاويات')+(pendingContainers?' · '+pendingContainers+' '+bi('not yet invoiced','لم تتم فوترتها'):'')+'</span></div><div class="table-wrap" style="padding:18px 20px;"><div class="bars">'+bars+'</div></div></div>' : '')+
+        (breakdown.length ? '<div class="section"><div class="section-head"><h2>'+bi('Containers &amp; cost by category','الحاويات والتكلفة حسب الفئة')+'</h2><span class="hint">'+containerTotal+' '+bi('containers total','إجمالي الحاويات')+(pendingContainers?' · '+pendingContainers+' '+bi('not yet invoiced','لم تتم فوترتها'):'')+'</span></div>'+
+          '<div class="table-wrap" style="padding:18px 20px; display:flex; gap:28px; flex-wrap:wrap; align-items:center;">'+
+            '<div style="flex:1; min-width:220px;"><div class="bars">'+bars+'</div></div>'+
+            (amountTotal ? '<div style="display:flex; align-items:center; gap:18px; flex:1; min-width:260px;">'+categoryDonut+'<div style="flex:1; min-width:160px;">'+categoryLegend+'</div></div>' : '')+
+          '</div></div>' : '')+
         (natTotal ? '<div class="section"><div class="section-head"><h2>'+bi('Files by consignee origin','الملفات حسب جنسية المرسل إليه')+'</h2></div><div class="table-wrap" style="padding:18px 20px;">'+
           '<div style="display:flex; height:22px; border-radius:6px; overflow:hidden; border:1px solid var(--border);">'+natBar+'</div>'+
           '<div style="margin-top:12px; font-size:12.5px;">'+natLegend+'</div>'+
@@ -1026,9 +1289,9 @@
       'notfinished-Michy':'2026 files with no invoice sent yet — excluded from the NASA debt totals until invoiced',
       'notfinished-Deia':'2026 files with no invoice sent yet — excluded from the NASA debt totals until invoiced',
       'notfinished-Ayman':'2026 files with no invoice sent yet — excluded from the NASA debt totals until invoiced',
-      'extworker-Michy':"Unexpected amounts paid to external workers — subtracted from this account's profit",
-      'extworker-Deia':"Unexpected amounts paid to external workers — subtracted from this account's profit",
-      'extworker-Ayman':"Unexpected amounts paid to external workers — subtracted from this account's profit",
+      'extworker-Michy':"Unexpected amounts paid to external workers — subtracted from this account's profit, unless tied to a file",
+      'extworker-Deia':"Unexpected amounts paid to external workers — subtracted from this account's profit, unless tied to a file",
+      'extworker-Ayman':"Unexpected amounts paid to external workers — subtracted from this account's profit, unless tied to a file",
       'officeexp-Michy':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
       'officeexp-Deia':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
       'officeexp-Ayman':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
@@ -1084,7 +1347,10 @@
     }
     matches = matches.sort(function(a,b){ return (b.arrivalDate||'').localeCompare(a.arrivalDate||''); });
 
-    var custMatches = accessCustomerFilter(customerAggregates().filter(function(m){ return m.customer.toLowerCase().indexOf(searchTerm)>-1; }))
+    var allCustAgg = accessCustomerFilter(customerAggregates());
+    var searchNameCounts = {};
+    allCustAgg.forEach(function(m){ searchNameCounts[m.customer] = (searchNameCounts[m.customer]||0) + 1; });
+    var custMatches = allCustAgg.filter(function(m){ return m.customer.toLowerCase().indexOf(searchTerm)>-1; })
       .sort(function(a,b){ return b.balance-a.balance; });
 
     var key = 'search';
@@ -1096,8 +1362,9 @@
 
     var custRows = custMatches.length ? custMatches.map(function(m){
       var badges = visibleAccountList(m.accountList).map(function(a){ return '<span class="pill" style="background:'+ACCOUNT_COLOR[a]+'22;color:'+ACCOUNT_COLOR[a]+'">'+a+'</span>'; }).join(' ');
+      var actions = customerRowActionsHtml(m, searchNameCounts);
       return '<tr><td>'+esc(m.customer)+'</td><td><div class="badgebar">'+badges+'</div></td><td class="num'+(m.balance>0?' row-neg':'')+'">'+fmt(m.balance)+'</td>'+
-        '<td><button class="btn small" data-open-cust-pay="'+esc(m.customer)+'">Log payment</button></td></tr>';
+        '<td style="white-space:nowrap;">'+actions+'</td></tr>';
     }).join('') : '';
 
     var shipRows = pageItems.map(function(s){
@@ -1152,7 +1419,7 @@
       .sort(function(a,b){ return (b.balance-b.limit)-(a.balance-a.limit); });
 
     var overLimitHtml = overLimit.length ? overLimit.slice(0,8).map(function(m){
-      return '<div class="kv-row"><div class="k">'+esc(m.customer)+'</div><div class="v row-neg">'+fmt(m.balance)+' / '+fmt(m.limit)+'</div></div>';
+      return '<div class="kv-row"><div class="k">'+esc(m.customer)+' <span class="pill" style="background:'+ACCOUNT_COLOR[m.account]+'22;color:'+ACCOUNT_COLOR[m.account]+'">'+m.account+'</span></div><div class="v row-neg">'+fmt(m.balance)+' / '+fmt(m.limit)+'</div></div>';
     }).join('') : '<div class="empty">No customers currently over their credit limit.</div>';
 
     root.innerHTML =
@@ -1207,7 +1474,7 @@
     }).join('');
 
     var nasaRows = nasaPays.length ? nasaPays.map(function(p){
-      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num">'+fmt(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num">'+fmt(p.amount)+reimbursementBadge(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
         '<td><button class="btn small ghost danger" data-del-nasa="'+p.id+'">Remove</button></td></tr>';
     }).join('') : '<tr><td colspan="4" class="empty">No payments to NASA logged yet for this account.</td></tr>';
 
@@ -1216,7 +1483,7 @@
         '<div class="card"><div class="card-label">Sold to customers</div><div class="card-value">'+fmt(t.sold)+'</div><div class="card-sub">'+t.count+' shipments</div></div>'+
         '<div class="card"><div class="card-label">Cost owed to NASA</div><div class="card-value">'+fmt(t.totalCost)+'</div><div class="card-sub">Paid '+fmt(t.paid)+' + additional cost '+fmt(t.addCost)+'</div></div>'+
         '<div class="card"><div class="card-label">Paid to NASA so far</div><div class="card-value">'+fmt(t.nasaPaid)+'</div><div class="card-sub">From logged payments</div></div>'+
-        '<div class="card"><div class="card-label">Paid to external workers</div><div class="card-value'+(t.extPaid?' row-neg':'')+'">'+fmt(t.extPaid)+'</div><div class="card-sub">Unexpected amounts, already subtracted from profit</div></div>'+
+        '<div class="card"><div class="card-label">Paid to external workers</div><div class="card-value'+(t.extPaid?' row-neg':'')+'">'+fmt(t.extPaid)+'</div><div class="card-sub">Untied amounts, subtracted from profit'+(t.extPaidTotal!==t.extPaid?' · '+fmt(t.extPaidTotal-t.extPaid)+' more tied to files, not subtracted':'')+'</div></div>'+
         '<div class="card"><div class="card-label">Current debt to NASA</div><div class="card-value'+(t.debt<0?' row-neg':'')+'">'+fmt(t.debt)+'</div><div class="card-sub">Profit '+fmt(t.profit)+(t.extPaid?' (net of '+fmt(t.extPaid)+' to external workers)':'')+'</div></div>'+
       '</div>'+
       '<div class="section"><div class="section-head"><h2>Opening balance</h2><span class="hint">One-time correction so the debt above matches your real books today</span></div>'+
@@ -1323,6 +1590,11 @@
     var unpaidTotal = list.reduce(function(a,p){ return p.paid===false ? a+(Number(p.amount)||0) : a; }, 0);
     var paidCount = list.filter(function(p){ return p.paid!==false; }).length;
     var unpaidCount = list.filter(function(p){ return p.paid===false; }).length;
+    // Of the amounts actually paid, only the untied (no file/container number)
+    // portion is subtracted from this account's profit -- the rest is already
+    // counted in each file's own cost.
+    var paidTiedTotal = list.reduce(function(a,p){ return (p.paid!==false && p.ref && p.ref.trim()) ? a+(Number(p.amount)||0) : a; }, 0);
+    var paidUntiedTotal = paidTotal - paidTiedTotal;
 
     var periodLabels = { all:'All time', week:'This week', month:'This month', year:'This year' };
     var periodBtns = ['all','week','month','year'].map(function(k){
@@ -1338,7 +1610,9 @@
         ? '<span class="pill good">'+esc(match.customer||'—')+'</span> <span class="muted">'+esc(match.goods||'')+'</span>'+
           '<div class="muted" style="font-size:11.5px; margin-top:2px;">File '+esc(match.fileNumber||'—')+' · '+esc(match.containerNumber||'—')+'</div>'
         : (p.ref ? '<span class="pill warn">No match found</span>' : '<span class="muted">—</span>');
-      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+'</td>'+
+      var tiedToFile = !!(p.ref && p.ref.trim());
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+reimbursementBadge(p.amount)+
+        (tiedToFile ? ' <span class="pill" title="Already counted in that file\'s own cost — not subtracted again from '+account+'\'s profit">Tied to a file</span>' : '')+'</td>'+
         '<td style="text-align:center;"><label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">'+
           '<input type="checkbox" class="extw-paid-cb" data-extw-paid="'+p.id+'" '+(p.paid!==false?'checked':'')+'>'+
           '<span class="pill '+(p.paid!==false?'good':'warn')+'">'+(p.paid!==false?'Paid':'Need to pay')+'</span>'+
@@ -1350,7 +1624,7 @@
 
     root.innerHTML =
       '<div class="grid-cards">'+
-        '<div class="card accent-'+account+'"><div class="card-label">Actually paid</div><div class="card-value row-neg">'+fmt(paidTotal)+'</div><div class="card-sub">'+paidCount+' of '+list.length+' entries · subtracted from '+account+' profit</div></div>'+
+        '<div class="card accent-'+account+'"><div class="card-label">Actually paid</div><div class="card-value row-neg">'+fmt(paidTotal)+'</div><div class="card-sub">'+paidCount+' of '+list.length+' entries · '+fmt(paidUntiedTotal)+' subtracted from '+account+' profit'+(paidTiedTotal?' ('+fmt(paidTiedTotal)+' tied to files, not subtracted)':'')+'</div></div>'+
         '<div class="card accent-'+account+'"><div class="card-label">Need to Be Paid</div><div class="card-value" style="color:var(--warn);">'+fmt(unpaidTotal)+'</div><div class="card-sub">'+unpaidCount+' of '+list.length+' entries still owed</div></div>'+
       '</div>'+
       '<div class="section"><div class="section-head"><h2>External Account — '+account+'</h2><button class="btn small primary" data-open-extw-pay="'+account+'">+ Log External Worker Payment</button></div>'+
@@ -1414,7 +1688,7 @@
     }).join('');
 
     var rows = list.length ? list.map(function(p){
-      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+'</td>'+
+      return '<tr><td>'+fmtDate(p.date)+'</td><td class="num row-neg">'+fmt(p.amount)+reimbursementBadge(p.amount)+'</td>'+
         '<td style="text-align:center;"><label style="display:inline-flex; align-items:center; gap:6px; cursor:pointer;">'+
           '<input type="checkbox" class="officeexp-paid-cb" data-officeexp-paid="'+p.id+'" '+(p.paid!==false?'checked':'')+'>'+
           '<span class="pill '+(p.paid!==false?'good':'warn')+'">'+(p.paid!==false?'Paid':'Need to pay')+'</span>'+
@@ -1446,9 +1720,34 @@
   }
 
   // ---------- render: customers ----------
+  // Builds the action buttons for one customer row — shared by the Customers
+  // page and the Search results page so both offer the same choices:
+  // - needs review: pick which account an old, unscoped record belongs to.
+  // - already combined (one real customer across accounts): the normal
+  //   actions, plus a way to split it back apart if that was a mistake.
+  // - name also used by another, still-separate row (nameCounts>1): the
+  // normal actions, plus an offer to combine them if they're really the
+  // same real customer.
+  function customerRowActionsHtml(m, nameCounts){
+    if(m.needsReview){
+      return '<span class="pill warn">Needs review — pick an account</span><br>'+ACCOUNTS.map(function(a){ return '<button class="btn small ghost" data-assign-review-acct="'+a+'" data-assign-review-name="'+esc(m.customer)+'">'+a+'</button>'; }).join(' ');
+    }
+    var base = '<button class="btn small" data-open-cust-pay-acct="'+esc(m.account)+'" data-open-cust-pay-name="'+esc(m.customer)+'">Log payment</button> <button class="btn small ghost" data-open-statement-acct="'+esc(m.account)+'" data-open-statement-name="'+esc(m.customer)+'">Statement</button>';
+    if(m.isCombined){
+      return base+' <button class="btn small ghost" data-split-combined-name="'+esc(m.customer)+'">Split apart</button>';
+    }
+    if((nameCounts && nameCounts[m.customer]||0) > 1){
+      return base+'<br><button class="btn small ghost" data-combine-name="'+esc(m.customer)+'" style="margin-top:4px;">Same customer as the other "'+esc(m.customer)+'"? Combine</button>';
+    }
+    return base;
+  }
+
   function renderCustomers(){
     var root = document.getElementById('view-customers');
-    var list = accessCustomerFilter(customerAggregates());
+    var fullList = accessCustomerFilter(customerAggregates());
+    var nameCounts = {};
+    fullList.forEach(function(m){ nameCounts[m.customer] = (nameCounts[m.customer]||0) + 1; });
+    var list = fullList;
     if(searchTerm){
       list = list.filter(function(m){ return m.customer.toLowerCase().indexOf(searchTerm)>-1; });
     }
@@ -1468,19 +1767,22 @@
     var totalBalance = list.reduce(function(a,m){ return a+m.balance; },0);
     var overCount = list.filter(function(m){ return m.limit!=null && m.limit>0 && m.balance>m.limit; }).length;
 
+    var needsReviewCount = list.filter(function(m){ return m.needsReview; }).length;
+
     var rows = list.map(function(m){
       var st = customerStatus(m);
       var badges = visibleAccountList(m.accountList).map(function(a){ return '<span class="pill" style="background:'+ACCOUNT_COLOR[a]+'22;color:'+ACCOUNT_COLOR[a]+'">'+a+'</span>'; }).join(' ');
-      return '<tr>'+
+      var actions = customerRowActionsHtml(m, nameCounts);
+      return '<tr'+(m.needsReview ? ' style="background:var(--surface-3);"' : '')+'>'+
         '<td>'+esc(m.customer)+'</td>'+
         '<td><div class="badgebar">'+badges+'</div></td>'+
         '<td class="num">'+fmt(m.sold)+'</td>'+
         '<td class="num">'+fmt(m.paid)+'</td>'+
-        '<td><input type="number" class="credit-input" data-adj="'+esc(m.customer)+'" value="'+(m.adjustment||'')+'" placeholder="0"></td>'+
+        '<td><input type="number" class="credit-input" data-adj-acct="'+esc(m.account)+'" data-adj-name="'+esc(m.customer)+'" value="'+(m.adjustment||'')+'" placeholder="0"></td>'+
         '<td class="num'+(m.balance>0?' row-neg':'')+'">'+fmt(m.balance)+'</td>'+
-        '<td><input type="number" class="credit-input" data-limit="'+esc(m.customer)+'" value="'+(m.limit!=null?m.limit:'')+'" placeholder="none"></td>'+
+        '<td><input type="number" class="credit-input" data-limit-acct="'+esc(m.account)+'" data-limit-name="'+esc(m.customer)+'" value="'+(m.limit!=null?m.limit:'')+'" placeholder="none"></td>'+
         '<td><span class="pill '+st.cls+'">'+st.label+'</span></td>'+
-        '<td style="white-space:nowrap;"><button class="btn small" data-open-cust-pay="'+esc(m.customer)+'">Log payment</button> <button class="btn small ghost" data-open-statement="'+esc(m.customer)+'">Statement</button></td>'+
+        '<td style="white-space:nowrap;">'+actions+'</td>'+
       '</tr>';
     }).join('');
 
@@ -1490,8 +1792,9 @@
         '<div class="card"><div class="card-label">Total customer balance</div><div class="card-value'+(totalBalance>0?' row-neg':'')+'">'+fmt(totalBalance)+'</div><div class="card-sub">What customers owe, combined</div></div>'+
         '<div class="card"><div class="card-label">Over credit limit</div><div class="card-value'+(overCount>0?' row-neg':'')+'">'+overCount+'</div></div>'+
       '</div>'+
+      (needsReviewCount ? '<div class="section-head" style="margin-bottom:10px;"><span class="hint" style="color:var(--warn);">'+needsReviewCount+' customer name'+(needsReviewCount===1?'':'s')+' with existing payments/credit limits that could belong to more than one account — pick the right one below before relying on '+(needsReviewCount===1?'its':'their')+' balance.</span></div>' : '')+
       (ACCESS.full ? '<div class="section-head" style="margin-bottom:10px;"><span class="hint">Filter by agent</span><div style="display:flex; gap:8px;">'+filterBtns+'</div></div>' : '')+
-      '<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Accounts</th><th class="num">Sold</th><th class="num">Paid</th><th>Opening balance</th><th class="num">Balance</th><th>Credit limit</th><th>Status</th><th></th></tr></thead>'+
+      '<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Account</th><th class="num">Sold</th><th class="num">Paid</th><th>Opening balance</th><th class="num">Balance</th><th>Credit limit</th><th>Status</th><th></th></tr></thead>'+
       '<tbody>'+(rows || '<tr><td colspan="9" class="empty">No customers match'+(ACCESS.full && customerAccountFilter!=='all'?' for '+customerAccountFilter:'')+'.</td></tr>')+'</tbody></table></div>';
   }
 
@@ -1515,7 +1818,7 @@
 
     // Files not invoiced yet (2026, "Send Invoices" still "No") for this same customer —
     // future money expected from them once those go through, not part of the debt/balance yet.
-    var pending = notFinished.filter(function(s){ return s.customer===m.customer; })
+    var pending = notFinished.filter(function(s){ return resolveCustomerAccounts(m.account, m.customer).indexOf(s.account)>-1 && s.customer===m.customer; })
       .sort(function(a,b){ return (a.arrivalDate||'').localeCompare(b.arrivalDate||''); });
     var pendingSold = pending.reduce(function(a,s){ return a+s.sold; },0);
     var pendingRows = pending.map(function(s){
@@ -1575,28 +1878,23 @@
   function renderPaymentLog(){
     var root = document.getElementById('view-paymentlog');
 
-    // Customer payments aren't tagged with an agent/account directly — derive it from
-    // which NASA account(s) that customer actually has shipments under.
+    // Every logged payment now carries its own account directly (see
+    // migrateCustomerAccountScoping for older records that didn't).
     var aggregates = customerAggregates();
-    var custAccounts = {};
-    var custByName = {};
-    aggregates.forEach(function(m){ custAccounts[m.customer] = m.accountList; custByName[m.customer] = m; });
+    var custByKey = {};
+    aggregates.forEach(function(m){ custByKey[m.account+'\u0001'+m.customer] = m; });
 
     var all = state.customerPayments.map(function(p){ return Object.assign({type:'customer'}, p); })
       .concat(state.nasaPayments.map(function(p){ return Object.assign({type:'nasa'}, p); }));
     if(!ACCESS.full){
       var allowedAcctsPL = accessibleAccounts();
-      all = all.filter(function(p){
-        var accts = p.type==='customer' ? (custAccounts[p.customer]||[]) : (p.account ? [p.account] : []);
-        return accts.some(function(a){ return allowedAcctsPL.indexOf(a)>-1; });
-      });
+      all = all.filter(function(p){ return p.account && allowedAcctsPL.indexOf(p.account)>-1; });
     }
     if(searchTerm){
       // Payment Log search only ever searches payments — it never pulls in shipments,
       // so looking up a customer number here shows just their payment history.
       all = all.filter(function(p){
-        var accts = p.type==='customer' ? (custAccounts[p.customer]||[]).join(' ') : (p.account||'');
-        return ((p.customer||'')+' '+accts+' '+(p.note||'')).toLowerCase().indexOf(searchTerm)>-1;
+        return ((p.customer||'')+' '+(p.account||'')+' '+(p.note||'')).toLowerCase().indexOf(searchTerm)>-1;
       });
     }
     all.sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.id||'').localeCompare(a.id||''); });
@@ -1608,12 +1906,12 @@
     // does not — that many cards would just be noise.
     var snapshotHtml = '';
     if(searchTerm){
-      var namesInResults = {};
-      all.forEach(function(p){ if(p.type==='customer' && p.customer) namesInResults[p.customer]=true; });
-      var names = Object.keys(namesInResults);
-      if(names.length>=1 && names.length<=5){
-        snapshotHtml = names.filter(function(n){ return custByName[n]; })
-          .map(function(n){ return customerSnapshotHTML(custByName[n]); }).join('');
+      var keysInResults = {};
+      all.forEach(function(p){ if(p.type==='customer' && p.customer && p.account) keysInResults[p.account+'\u0001'+p.customer]=true; });
+      var keys = Object.keys(keysInResults);
+      if(keys.length>=1 && keys.length<=5){
+        snapshotHtml = keys.filter(function(k){ return custByKey[k]; })
+          .map(function(k){ return customerSnapshotHTML(custByKey[k]); }).join('');
       }
     }
 
@@ -1631,14 +1929,11 @@
     accessibleAccounts().forEach(function(a){ nasaTotals[a] = {week:0, month:0}; custTotals[a] = {week:0, month:0}; });
     all.forEach(function(p){
       var amt = Number(p.amount)||0;
-      if(!amt) return;
-      var accts = p.type==='customer' ? (custAccounts[p.customer]||[]) : (p.account ? [p.account] : []);
+      if(!amt || !p.account) return;
       var bucket = p.type==='customer' ? custTotals : nasaTotals;
-      accts.forEach(function(a){
-        if(!bucket[a]) return;
-        if(p.date >= weekStartStr) bucket[a].week += amt;
-        if(p.date >= monthStartStr) bucket[a].month += amt;
-      });
+      if(!bucket[p.account]) return;
+      if(p.date >= weekStartStr) bucket[p.account].week += amt;
+      if(p.date >= monthStartStr) bucket[p.account].month += amt;
     });
     function periodTable(title, hint, totals){
       return '<div class="section"><div class="section-head"><h2>'+title+'</h2>'+
@@ -1656,7 +1951,7 @@
       periodTable('From customers — this week / this month', 'Logged customer payments, by account · week starts Monday', custTotals);
 
     function agentBadges(p){
-      var accts = p.type==='customer' ? visibleAccountList(custAccounts[p.customer]||[]) : [p.account];
+      var accts = visibleAccountList(p.account ? [p.account] : []);
       accts = accts.filter(Boolean);
       if(!accts.length) return '<span class="muted">—</span>';
       return '<div class="badgebar">'+accts.map(function(a){
@@ -1667,7 +1962,7 @@
     var rows = all.map(function(p){
       var who = p.type==='customer' ? esc(p.customer) : 'NASA payment';
       var badge = p.type==='customer' ? '<span class="pill accent">Customer</span>' : '<span class="pill">NASA</span>';
-      return '<tr><td>'+fmtDate(p.date)+'</td><td>'+badge+'</td><td>'+agentBadges(p)+'</td><td>'+who+'</td><td class="num">'+fmt(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
+      return '<tr><td>'+fmtDate(p.date)+'</td><td>'+badge+'</td><td>'+agentBadges(p)+'</td><td>'+who+'</td><td class="num">'+fmt(p.amount)+reimbursementBadge(p.amount)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
         '<td><button class="btn small ghost danger" data-del="'+p.type+':'+p.id+'">Remove</button></td></tr>';
     }).join('');
 
@@ -1692,7 +1987,7 @@
     else if(view.indexOf('account-')===0) renderAccount(view.slice(8));
     else if(view==='customers') renderCustomers();
     else if(view==='paymentlog') renderPaymentLog();
-    else if(view==='statement'){ if(statementCustomerName) renderCustomerStatement(statementCustomerName); }
+    else if(view==='statement'){ if(statementCustomerName) renderCustomerStatement(statementCustomerAccount, statementCustomerName); }
   }
 
   // ---------- delegated events ----------
@@ -1726,13 +2021,56 @@
     if(openOfficeExp){ openOfficeExpenseModal(openOfficeExp.dataset.openOfficeexpPay); return; }
     var openNasa = e.target.closest('[data-open-nasa-pay]');
     if(openNasa){ openPaymentModal('nasa', openNasa.dataset.openNasaPay); return; }
-    var openCust = e.target.closest('[data-open-cust-pay]');
-    if(openCust){ openPaymentModal('customer', null, openCust.dataset.openCustPay); return; }
+    var openCust = e.target.closest('[data-open-cust-pay-name]');
+    if(openCust){ openPaymentModal('customer', openCust.dataset.openCustPayAcct, openCust.dataset.openCustPayName); return; }
     if(e.target.id==='btn-log-payment'){ openPaymentModal('customer'); return; }
     var openExtw = e.target.closest('[data-open-extw-pay]');
     if(openExtw){ openExternalWorkerModal(openExtw.dataset.openExtwPay); return; }
-    var openStatement = e.target.closest('[data-open-statement]');
-    if(openStatement){ showCustomerStatement(openStatement.dataset.openStatement); return; }
+    var openStatement = e.target.closest('[data-open-statement-name]');
+    if(openStatement){ showCustomerStatement(openStatement.dataset.openStatementAcct, openStatement.dataset.openStatementName); return; }
+    var assignReview = e.target.closest('[data-assign-review-acct]');
+    if(assignReview){
+      var toAcct = assignReview.dataset.assignReviewAcct;
+      var reviewName = assignReview.dataset.assignReviewName;
+      openConfirmModal('Assign every "Unassigned" record for "'+reviewName+'" to '+toAcct+'? Only do this once you\'ve checked which account this customer\'s payments/credit limit really belong to.', function(){
+        (state.customerPayments||[]).forEach(function(p){
+          if(p.account==='Unassigned' && (p.customer||'').trim()===reviewName) p.account = toAcct;
+        });
+        if(state.creditLimits.Unassigned && state.creditLimits.Unassigned[reviewName] != null){
+          state.creditLimits[toAcct] = state.creditLimits[toAcct] || {};
+          state.creditLimits[toAcct][reviewName] = state.creditLimits.Unassigned[reviewName];
+          delete state.creditLimits.Unassigned[reviewName];
+        }
+        if(state.customerAdjustments.Unassigned && state.customerAdjustments.Unassigned[reviewName] != null){
+          state.customerAdjustments[toAcct] = state.customerAdjustments[toAcct] || {};
+          state.customerAdjustments[toAcct][reviewName] = state.customerAdjustments.Unassigned[reviewName];
+          delete state.customerAdjustments.Unassigned[reviewName];
+        }
+        renderView(currentView);
+        persist('Assigned "'+reviewName+'" to '+toAcct+'.');
+      });
+      return;
+    }
+    var combineBtn = e.target.closest('[data-combine-name]');
+    if(combineBtn){
+      var combineName = combineBtn.dataset.combineName;
+      openConfirmModal('Combine every "'+combineName+'" record across accounts into one customer? Only do this if they are genuinely the same real customer — otherwise their balances will add together.', function(){
+        markCustomerAsCombined(combineName);
+        renderView(currentView);
+        persist('Combined "'+combineName+'" into one customer.');
+      });
+      return;
+    }
+    var splitBtn = e.target.closest('[data-split-combined-name]');
+    if(splitBtn){
+      var splitName = splitBtn.dataset.splitCombinedName;
+      openConfirmModal('Split "'+splitName+'" back into separate customers, one per account?', function(){
+        unmarkCustomerAsCombined(splitName);
+        renderView(currentView);
+        persist('Split "'+splitName+'" back into separate customers.');
+      });
+      return;
+    }
     if(e.target.closest('[data-back-from-statement]')){ switchView('customers'); return; }
     if(e.target.closest('[data-print-statement]')){ window.print(); return; }
     var statementYearBtn = e.target.closest('[data-statement-year]');
@@ -1740,7 +2078,7 @@
       var sy = statementYearBtn.dataset.statementYear;
       if(sy==='all'){ statementFrom=""; statementTo=""; }
       else { statementFrom = sy+'-01-01'; statementTo = sy+'-12-31'; }
-      renderCustomerStatement(statementCustomerName);
+      renderCustomerStatement(statementCustomerAccount, statementCustomerName);
       return;
     }
     var delBtn = e.target.closest('[data-del]');
@@ -1798,13 +2136,13 @@
       renderView(currentView);
       return;
     }
-    if(e.target.id==='statement-from'){ statementFrom = e.target.value; renderCustomerStatement(statementCustomerName); return; }
-    if(e.target.id==='statement-to'){ statementTo = e.target.value; renderCustomerStatement(statementCustomerName); return; }
+    if(e.target.id==='statement-from'){ statementFrom = e.target.value; renderCustomerStatement(statementCustomerAccount, statementCustomerName); return; }
+    if(e.target.id==='statement-to'){ statementTo = e.target.value; renderCustomerStatement(statementCustomerAccount, statementCustomerName); return; }
     if(e.target.classList.contains('release-date-input')){
       var rid = e.target.dataset.releaseDate;
       if(e.target.value) state.releaseDates[rid] = e.target.value;
       else delete state.releaseDates[rid];
-      renderCustomerStatement(statementCustomerName);
+      renderCustomerStatement(statementCustomerAccount, statementCustomerName);
       persist('Release date updated.');
       return;
     }
@@ -1812,7 +2150,7 @@
       var consigneeKey = e.target.dataset.consignee;
       if(e.target.value) state.consigneeNationality[consigneeKey] = e.target.value;
       else delete state.consigneeNationality[consigneeKey];
-      renderCustomerStatement(statementCustomerName);
+      renderCustomerStatement(statementCustomerAccount, statementCustomerName);
       persist('Consignee updated.');
       return;
     }
@@ -1838,18 +2176,20 @@
     }
     if(!e.target.classList.contains('credit-input')) return;
     var val = e.target.value.trim();
-    if(e.target.dataset.limit != null){
-      var cust = e.target.dataset.limit;
-      if(val===''){ delete state.creditLimits[cust]; }
-      else { state.creditLimits[cust] = Number(val); }
+    if(e.target.dataset.limitName != null){
+      var limAcct = e.target.dataset.limitAcct, limName = e.target.dataset.limitName;
+      state.creditLimits[limAcct] = state.creditLimits[limAcct] || {};
+      if(val===''){ delete state.creditLimits[limAcct][limName]; }
+      else { state.creditLimits[limAcct][limName] = Number(val); }
       renderView(currentView);
-      persist('Credit limit updated for '+cust+'.');
-    } else if(e.target.dataset.adj != null){
-      var cust2 = e.target.dataset.adj;
-      if(val===''){ delete state.customerAdjustments[cust2]; }
-      else { state.customerAdjustments[cust2] = Number(val); }
+      persist('Credit limit updated for '+limName+'.');
+    } else if(e.target.dataset.adjName != null){
+      var adjAcct = e.target.dataset.adjAcct, adjName = e.target.dataset.adjName;
+      state.customerAdjustments[adjAcct] = state.customerAdjustments[adjAcct] || {};
+      if(val===''){ delete state.customerAdjustments[adjAcct][adjName]; }
+      else { state.customerAdjustments[adjAcct][adjName] = Number(val); }
       renderView(currentView);
-      persist('Opening balance updated for '+cust2+'.');
+      persist('Opening balance updated for '+adjName+'.');
     } else if(e.target.dataset.acctAdj != null){
       var acct = e.target.dataset.acctAdj;
       state.accountAdjustments[acct] = val==='' ? 0 : Number(val);
@@ -1883,7 +2223,11 @@
   }
 
   function openPaymentModal(type, presetAccount, presetCustomer){
-    var customers = accessCustomerFilter(customerAggregates()).map(function(m){ return m.customer; }).sort();
+    var accounts = accessibleAccounts();
+    var initialAccount = (presetAccount && accounts.indexOf(presetAccount)>-1) ? presetAccount : accounts[0];
+    function customersForAccount(acct){
+      return accessCustomerFilter(customerAggregates()).filter(function(m){ return m.account===acct; }).map(function(m){ return m.customer; }).sort();
+    }
     var root = document.getElementById('modal-root');
     var isCustomer = type==='customer';
     root.innerHTML =
@@ -1896,16 +2240,21 @@
             '<button type="button" class="'+(!isCustomer?'active':'')+'" data-type="nasa">You → NASA</button>'+
           '</div>'+
           '<form id="payment-form">'+
+            '<div class="field" id="field-custaccount" style="'+(isCustomer?'':'display:none')+'">'+
+              '<label for="pf-custaccount">Account</label>'+
+              '<select id="pf-custaccount" name="custaccount">'+accounts.map(function(a){ return '<option value="'+a+'" '+(a===initialAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
+            '</div>'+
             '<div class="field" id="field-customer" style="'+(isCustomer?'':'display:none')+'">'+
               '<label for="pf-customer">Customer</label>'+
               '<input list="customer-list" id="pf-customer" name="customer" placeholder="Type or pick a customer" value="'+esc(presetCustomer||'')+'">'+
-              '<datalist id="customer-list">'+customers.map(function(c){ return '<option value="'+esc(c)+'">'; }).join('')+'</datalist>'+
+              '<datalist id="customer-list">'+customersForAccount(initialAccount).map(function(c){ return '<option value="'+esc(c)+'">'; }).join('')+'</datalist>'+
+              '<div class="hint" style="margin-top:4px;">If this name also exists under another account, it\'s a different customer there — the list above only shows the account picked.</div>'+
             '</div>'+
             '<div class="field" id="field-account" style="'+(isCustomer?'display:none':'')+'">'+
               '<label for="pf-account">NASA account</label>'+
-              '<select id="pf-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
+              '<select id="pf-account" name="account">'+accounts.map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
-            '<div class="field"><label for="pf-amount">Amount</label><input type="number" step="0.01" min="0.01" id="pf-amount" name="amount" placeholder="0.00" required></div>'+
+            '<div class="field"><label for="pf-amount">Amount</label><input type="number" step="0.01" id="pf-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
             '<div class="field"><label for="pf-date">Date</label><input type="date" id="pf-date" name="date" value="'+todayISO()+'" required></div>'+
             '<div class="field"><label for="pf-note">Note (optional)</label><input type="text" id="pf-note" name="note" placeholder="e.g. bank transfer, cash"></div>'+
             '<div class="modal-actions">'+
@@ -1923,7 +2272,11 @@
       curType = b.dataset.type;
       document.querySelectorAll('#modal-type-seg button').forEach(function(x){ x.classList.toggle('active', x===b); });
       document.getElementById('field-customer').style.display = curType==='customer' ? '' : 'none';
+      document.getElementById('field-custaccount').style.display = curType==='customer' ? '' : 'none';
       document.getElementById('field-account').style.display = curType==='customer' ? 'none' : '';
+    });
+    document.getElementById('pf-custaccount').addEventListener('change', function(e){
+      document.getElementById('customer-list').innerHTML = customersForAccount(e.target.value).map(function(c){ return '<option value="'+esc(c)+'">'; }).join('');
     });
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
     document.getElementById('modal-overlay').addEventListener('click', function(e){ if(e.target.id==='modal-overlay') closeModal(); });
@@ -1932,18 +2285,13 @@
       var amount = parseFloat(document.getElementById('pf-amount').value);
       var date = document.getElementById('pf-date').value;
       var note = document.getElementById('pf-note').value.trim();
-      if(!amount || amount<=0){ toast('Enter an amount greater than 0.', true); return; }
+      if(!amount || isNaN(amount) || amount===0){ toast('Enter an amount (negative allowed for a reimbursement).', true); return; }
       if(curType==='customer'){
         var customer = document.getElementById('pf-customer').value.trim();
+        var custAccount = document.getElementById('pf-custaccount').value;
         if(!customer){ toast('Enter a customer name.', true); return; }
-        if(!ACCESS.full){
-          var existingCust = customerAggregates().filter(function(m){ return m.customer===customer; })[0];
-          var allowedForCust = accessibleAccounts();
-          if(existingCust && !(existingCust.accountList||[]).some(function(a){ return allowedForCust.indexOf(a)>-1; })){
-            toast('That customer is not part of your account.', true); return;
-          }
-        }
-        state.customerPayments.push({ id:uid(), customer:customer, amount:amount, date:date, note:note });
+        if(!ACCESS.full && accessibleAccounts().indexOf(custAccount)===-1){ toast('Not available for your account.', true); return; }
+        state.customerPayments.push({ id:uid(), customer:customer, account:custAccount, amount:amount, date:date, note:note });
       } else {
         var account = document.getElementById('pf-account').value;
         if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
@@ -1968,7 +2316,7 @@
               '<select id="extw-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
             '<div class="field"><label for="extw-payee">Paid to</label><input type="text" id="extw-payee" name="payee" placeholder="Name of worker" required></div>'+
-            '<div class="field"><label for="extw-amount">Amount</label><input type="number" step="0.01" min="0.01" id="extw-amount" name="amount" placeholder="0.00" required></div>'+
+            '<div class="field"><label for="extw-amount">Amount</label><input type="number" step="0.01" id="extw-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
             '<div class="field"><label for="extw-date">Date</label><input type="date" id="extw-date" name="date" value="'+todayISO()+'" required></div>'+
             '<div class="field"><label for="extw-reason">Reason</label><input type="text" id="extw-reason" name="reason" placeholder="e.g. extra unloading labor" required></div>'+
             '<div class="field"><label for="extw-ref">File # or Container #</label><input type="text" id="extw-ref" name="ref" placeholder="e.g. 1138860 or ONEU5892502"></div>'+
@@ -1985,17 +2333,22 @@
     function updateMatchPreview(){
       var ref = document.getElementById('extw-ref').value;
       var preview = document.getElementById('extw-match-preview');
-      if(!ref.trim()){ preview.textContent = ''; return; }
+      if(!ref.trim()){
+        preview.style.color = 'var(--ink-dim)';
+        preview.textContent = 'No file number — this will be subtracted from profit.';
+        return;
+      }
       var match = findShipmentMatch(ref);
       if(match){
         preview.style.color = 'var(--good)';
-        preview.textContent = 'Matched: '+match.customer+' · '+(match.goods||'')+' · file '+(match.fileNumber||'—');
+        preview.textContent = 'Matched: '+match.customer+' · '+(match.goods||'')+' · file '+(match.fileNumber||'—')+' — already counted in that file\'s cost, will NOT be subtracted from profit.';
       } else {
         preview.style.color = 'var(--warn)';
-        preview.textContent = 'No shipment found with that file/container number — it will still be saved as typed.';
+        preview.textContent = 'No shipment found with that file/container number — it will still be saved as typed, and will NOT be subtracted from profit.';
       }
     }
     document.getElementById('extw-ref').addEventListener('input', updateMatchPreview);
+    updateMatchPreview();
     document.getElementById('extw-cancel').addEventListener('click', closeModal);
     document.getElementById('extw-overlay').addEventListener('click', function(e){ if(e.target.id==='extw-overlay') closeModal(); });
     document.getElementById('extw-form').addEventListener('submit', function(e){
@@ -2006,7 +2359,7 @@
       var reason = document.getElementById('extw-reason').value.trim();
       var ref = document.getElementById('extw-ref').value.trim();
       var account = document.getElementById('extw-account').value;
-      if(!amount || amount<=0){ toast('Enter an amount greater than 0.', true); return; }
+      if(!amount || isNaN(amount) || amount===0){ toast('Enter an amount (negative allowed for a reimbursement).', true); return; }
       if(!payee){ toast('Enter who was paid.', true); return; }
       if(!reason){ toast('Enter a reason for this payment.', true); return; }
       if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
@@ -2032,7 +2385,7 @@
               '<select id="officeexp-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
             '<div class="field"><label for="officeexp-payee">Paid to</label><input type="text" id="officeexp-payee" name="payee" placeholder="e.g. employee name, electric company" required></div>'+
-            '<div class="field"><label for="officeexp-amount">Amount</label><input type="number" step="0.01" min="0.01" id="officeexp-amount" name="amount" placeholder="0.00" required></div>'+
+            '<div class="field"><label for="officeexp-amount">Amount</label><input type="number" step="0.01" id="officeexp-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
             '<div class="field"><label for="officeexp-date">Date</label><input type="date" id="officeexp-date" name="date" value="'+todayISO()+'" required></div>'+
             '<div class="field"><label for="officeexp-reason">Category</label><input type="text" id="officeexp-reason" name="reason" placeholder="e.g. Salary, Water, Electricity, Taxes" required></div>'+
             '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="officeexp-paid" checked style="width:auto;">Already paid</label></div>'+
@@ -2053,7 +2406,7 @@
       var payee = document.getElementById('officeexp-payee').value.trim();
       var reason = document.getElementById('officeexp-reason').value.trim();
       var account = document.getElementById('officeexp-account').value;
-      if(!amount || amount<=0){ toast('Enter an amount greater than 0.', true); return; }
+      if(!amount || isNaN(amount) || amount===0){ toast('Enter an amount (negative allowed for a reimbursement).', true); return; }
       if(!payee){ toast('Enter who was paid.', true); return; }
       if(!reason){ toast('Enter a category for this expense.', true); return; }
       if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
@@ -2114,6 +2467,8 @@
       state.releaseDates = state.releaseDates || {};
       state.consigneeNationality = state.consigneeNationality || {};
       state.meta = state.meta || {};
+      migrateCustomerAccountScoping();
+      seedKnownCombinedCustomers();
       var syncNow = state.meta.lastSync;
       document.getElementById('sidebarfoot').textContent = syncNow ? ('Shipment data synced '+fmtDate(syncNow)+' · 2025–2026') : 'Shipment data synced from Drive.';
       applyAccessRestrictions();
