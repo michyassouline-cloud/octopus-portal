@@ -1154,27 +1154,22 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
   var NATIONALITY_COLORS = { IL:'#3E7CB1', PS:'#2C7A54', '':'#C9CDC3' };
   var NATIONALITY_LABELS = { IL:'Israeli', PS:'Palestinian', '':'Not set' };
-  // Drawn as tiny inline SVGs rather than the 🇮🇱/🇵🇸 emoji characters --
-  // flag emoji are two combined "regional indicator" letters with no actual
-  // picture of their own; most systems substitute a real flag glyph from an
-  // emoji font, but Windows deliberately does not ship one, so Chrome on
-  // Windows (including when printing/exporting to PDF, which is exactly
-  // where this showed up) falls back to literally printing "IL"/"PS" as
-  // plain text. An SVG draws the same on every platform, screen or print.
+  // Drawn as tiny embedded raster images (PNG data URIs) rather than the
+  // 🇮🇱/🇵🇸 emoji characters or an inline <svg>. Emoji flags are two
+  // combined "regional indicator" letters with no actual picture of their
+  // own -- most systems substitute a real flag glyph from an emoji font,
+  // but Windows deliberately does not ship one, so Chrome on Windows fell
+  // back to literally printing "IL"/"PS" as plain text. Switching to an
+  // inline <svg> fixed the on-screen view and Chrome's own print preview,
+  // but a real round-trip (Chrome's "Save as PDF" -> reopened in Nitro /
+  // Adobe) still lost it -- those readers apparently don't reliably handle
+  // an inline SVG baked into a printed page the same way Chrome's own
+  // preview does. A plain embedded PNG has no such ambiguity: every PDF
+  // reader renders a raster image identically, since it's just image data
+  // in the page, not a browser-specific rendering feature.
   var NATIONALITY_FLAG = {
-    IL: '<svg width="18" height="13" viewBox="0 0 24 16" style="vertical-align:-2px;flex:none;" aria-hidden="true">'+
-          '<rect width="24" height="16" fill="#fff" stroke="#ccc" stroke-width="0.6"/>'+
-          '<rect x="0" y="2" width="24" height="2.1" fill="#0038b8"/>'+
-          '<rect x="0" y="11.9" width="24" height="2.1" fill="#0038b8"/>'+
-          '<polygon points="12,4.8 9.23,9.6 14.77,9.6" fill="none" stroke="#0038b8" stroke-width="0.7"/>'+
-          '<polygon points="12,11.2 9.23,6.4 14.77,6.4" fill="none" stroke="#0038b8" stroke-width="0.7"/>'+
-        '</svg>',
-    PS: '<svg width="18" height="13" viewBox="0 0 24 16" style="vertical-align:-2px;flex:none;" aria-hidden="true">'+
-          '<rect width="24" height="16" fill="#000"/>'+
-          '<rect y="5.33" width="24" height="5.34" fill="#fff"/>'+
-          '<rect y="10.67" width="24" height="5.33" fill="#007a3d"/>'+
-          '<polygon points="0,0 0,16 10,8" fill="#ce1126"/>'+
-        '</svg>'
+    IL: '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAYAAADlNHIOAAABu0lEQVR4Xu2bUW6DMBBEocqdaE+QKzcnKJwqlSM5QsgYliaeGTrvh0g4QZrnXQsH+nEc752B8QG7snlwyTkMw+BIGjJN0+NqrgAwFgDGAsBYABgLANN3n9++DwDiCgBjAWAsAIwFgLEAMBYAxgLAWACYPv8ho7gd3X/duvvPFRzhMeS3o1P4iXTMnxU5TQtSlSApQDXsEpIC1lAUIydgGbLqIpyRErA2w+cS1Krg+VQEC9EAS+Nrv8FWMVIV8Aqigt8NlYAW4bBVAFULSuGUFtnIwjsfm8NuIfYoVBVQIhrecoaXhDBBJ2CrRWydnxOVh4BOQI294ZfG7f1uaygFsIb1DigF/CcoBSj07ldBKeCvm23Ru2MkdAK2Zv/W+TkKawmdgCXREGs3bRF5raC6E97bOvYGuXccEqoKiM72I7BJoRLQghaSI1C1oEQtoNLsLW24sYVcQ6oC1oJl33A7jYBShbD19ChSFbCFUuvJSApQDHoNSQElVKXICsiBp6Nq+Am/pgpGtgLOggWAsQAwFgDGAsBYABgLAGMBYKRfU1VG/jXVs+AWBMYCwFgAGAsA83wqIq/Kpi2uADC/ZfiEhcnbMqsAAAAASUVORK5CYII=" width="18" height="12" alt="Israeli" style="vertical-align:-2px;flex:none;">',
+    PS: '<img src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAGAAAABACAYAAADlNHIOAAABo0lEQVR4Xu2bS07DQAxAB8QFyoYblDXcisuWNZfoFUADpBCRNPOxPSZ+T6q6qVrpPXncpGo6HY7vKSUegxzcppTS6XDMTzCAzwBEGMclwBSBabBlFoBpsGcxAEeSHasBiGDD1QDsBX02A7AXdCkOwJGkQ1UAIshTHYC9IEtTAPaCHF0BOJL66Q5AhD5EArAX2hELwF5oQzwAR1IdKgGIUI5aAPZCGaoB2Avb3G2/RIb8S9vT+U3mzXaEyQRMvN4/7kidDKYBMjkCIX4wD8A0zBkWYJqG6AwNQIQ0PkD0vTB8An4TcTm7ChDxSHIXIFoElwEi7QW3AaJcL7gPsPf7R2Y342rZu/gJlxMQRX7GXYBI8t0FiCY/42IHRBTvZgdElj/8CIouf2gA5H9x8/1PeTOeXx7MPus/YPo1FPl/MQuA/GVMAiB/HdXrAMRvozYByC9DJQDyyxEPgPw6xHYA4tsQmQDkt9MdAPl9dAVAfj9NOwDxclRPAPJlqQqAfHmKAyBfh80dgHhdrk4A8vVZDYB8GxYDIN+O2Q5AvD2XCUD+GD4A0javJWQtlZsAAAAASUVORK5CYII=" width="18" height="12" alt="Palestinian" style="vertical-align:-2px;flex:none;">'
   };
   var extwPeriodFilter = "all"; // "all" | "week" | "month" | "year" — External Account tabs only
   var extwReasonFilter = "all"; // "all" | a specific reason string — External Account tabs only
