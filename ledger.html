@@ -873,6 +873,23 @@
       map[k].count += 1;
       map[k].accounts[s.account] = true;
     });
+    // A file that's been released (picked up from the port) but not yet
+    // formally invoiced still represents a real debt -- the customer already
+    // has the goods -- so it's counted the same as an invoiced shipment, as
+    // long as a sold price has actually been entered for it. A file that's
+    // neither invoiced nor released has no confirmed price yet and stays out
+    // of the balance until one of those happens.
+    (notFinished||[]).forEach(function(s){
+      if(!state.releaseDates[s.id] || !s.sold) return;
+      var name = s.customer && s.customer.trim();
+      if(!name) return;
+      var combined = isCombinedCustomer(name);
+      var k = groupKey(s.account, name, combined);
+      if(!map[k]) map[k] = { customer:name, account: combined ? 'Combined' : s.account, accounts:{}, isCombined:combined, sold:0, count:0 };
+      map[k].sold += s.sold;
+      map[k].count += 1;
+      map[k].accounts[s.account] = true;
+    });
     state.customerPayments.forEach(function(p){
       var name = p.customer && p.customer.trim();
       if(!name) return;
@@ -948,7 +965,12 @@
           id: s.id, container: containers[0] || '—', containerCount: containers.length || 1,
           fileNumber: s.fileNumber||'—', goods:(s.goods||'').trim()||'Uncategorized',
           sold:s.sold||0, arrivalDate:s.arrivalDate, finished:finished, releaseDate:releaseDate,
-          released: !!(finished && releaseDate),
+          // Released = actually picked up from the port, whether or not the
+          // office has formally invoiced it yet. A released-but-not-invoiced
+          // file still represents a real debt, so this must reflect the real
+          // release date on file, not be forced false just because the file
+          // hasn't been invoiced.
+          released: !!releaseDate,
           consignee: consignee, nationality: nat
         });
       });
@@ -971,7 +993,13 @@
   // same breakdown above (which counts containers, not amounts).
   function customerCategoryAmountBreakdown(rows){
     var sums = {};
-    rows.forEach(function(r){ if(!r.finished) return; sums[r.goods] = (sums[r.goods]||0) + (r.sold||0); });
+    // Same rule as the headline "Total money owed": invoiced files always
+    // count, and a released-but-not-yet-invoiced file counts too once it has
+    // a real sold price on file (it's already a real debt).
+    rows.forEach(function(r){
+      if(!(r.finished || (r.released && Number(r.sold)>0))) return;
+      sums[r.goods] = (sums[r.goods]||0) + (r.sold||0);
+    });
     return Object.keys(sums).map(function(k){ return {label:k, amount:sums[k]}; })
       .sort(function(a,b){ return b.amount-a.amount; });
   }
@@ -1069,9 +1097,11 @@
     // shipments by arrival date, payments by their own logged date. With no
     // range chosen this reduces to the exact same all-time numbers shown on
     // the Customers page.
-    // Matches the rest of the ledger's convention: a not-yet-invoiced file isn't
-    // counted as money owed yet, only once it's actually been billed.
-    var sold = rows.filter(function(r){ return r.finished; }).reduce(function(a,r){ return a+r.sold; }, 0);
+    // A not-yet-invoiced file isn't counted as money owed yet, UNLESS it's
+    // already been released (picked up from the port) and has a known sold
+    // price -- that's a real debt even before the invoice is formally sent.
+    function rowCounted(r){ return r.finished || (r.released && Number(r.sold)>0); }
+    var sold = rows.filter(rowCounted).reduce(function(a,r){ return a+r.sold; }, 0);
     var paidList = (state.customerPayments||[]).filter(function(p){
       if((p.customer||'').trim()!==name) return false;
       // A combined customer pools every payment logged under this name,
@@ -1137,21 +1167,34 @@
     var hasPaymentRows = !!(paymentRows || adjustmentRow);
 
     var containerRows = rows.length ? rows.map(function(r){
-      // Plain text, same as the Arrival date column — this comes straight from
-      // your spreadsheet now, so it's just written out, not an editable field.
-      var releaseCell = !r.finished
-        ? '<span class="muted">—</span>'
-        : (r.releaseDate ? fmtDate(r.releaseDate) : '<span class="pill warn">Due to pay</span>');
+      // Release date is real whenever it's on file, whether or not the file
+      // has been invoiced yet — a released file without an invoice still
+      // shows its actual pickup date here, not a dash.
+      var releaseCell = r.releaseDate
+        ? fmtDate(r.releaseDate)
+        : (r.finished ? '<span class="pill warn">Due to pay</span>' : '<span class="muted">—</span>');
       // Nationality shown as a small flag right next to the name — no dropdown,
       // this is read straight from your spreadsheet (editable there, not here).
       var consigneeCell = !r.consignee ? '<span class="muted">—</span>' :
         (NATIONALITY_FLAG[r.nationality] ? '<span title="'+NATIONALITY_LABELS[r.nationality]+'" style="margin-right:6px;">'+NATIONALITY_FLAG[r.nationality]+'</span>' : '')+
         esc(r.consignee);
+      // A not-yet-invoiced file with no sold price entered has a genuinely
+      // unknown amount -- show that plainly instead of a misleading "0".
+      // One that IS released already counts toward the totals above (if a
+      // price is on file), so its amount is shown as a real figure, not TBD.
+      var soldCell = (!r.finished && !Number(r.sold))
+        ? '<span class="pill" style="font-weight:400;">Amount TBD</span>'
+        : fmt(r.sold);
+      var statusPill = r.finished
+        ? '<span class="pill good">Invoiced</span>'
+        : (r.released
+            ? (Number(r.sold)>0 ? '<span class="pill warn">Released — pending invoice</span>' : '<span class="pill warn">Released — amount pending</span>')
+            : '<span class="pill">Not invoiced yet</span>');
       return '<tr><td>'+esc(r.container)+'</td><td class="num-ctr">'+r.containerCount+'</td><td class="muted">'+esc(r.fileNumber)+'</td>'+
         '<td>'+goodsLabel(r.goods)+'</td><td>'+fmtDate(r.arrivalDate)+'</td><td>'+releaseCell+'</td>'+
         '<td>'+consigneeCell+'</td>'+
-        '<td class="num">'+fmt(r.sold)+'</td>'+
-        '<td class="no-print">'+(r.finished?'<span class="pill good">Invoiced</span>':'<span class="pill warn">Not invoiced yet</span>')+'</td></tr>';
+        '<td class="num">'+soldCell+'</td>'+
+        '<td class="no-print">'+statusPill+'</td></tr>';
     }).join('') : '<tr><td colspan="9" class="empty">No containers on file for this customer'+(hasFilter?' in this date range':'')+'.</td></tr>';
 
     var yearBtns = ['all'].concat(years).map(function(y){
@@ -1818,7 +1861,13 @@
 
     // Files not invoiced yet (2026, "Send Invoices" still "No") for this same customer —
     // future money expected from them once those go through, not part of the debt/balance yet.
-    var pending = notFinished.filter(function(s){ return resolveCustomerAccounts(m.account, m.customer).indexOf(s.account)>-1 && s.customer===m.customer; })
+    // A released-and-priced file is excluded here: it's already folded into
+    // m.sold/m.balance above (released = already picked up = a real debt,
+    // even before the formal invoice), so it isn't "upcoming" anymore.
+    var pending = notFinished.filter(function(s){
+      return resolveCustomerAccounts(m.account, m.customer).indexOf(s.account)>-1 && s.customer===m.customer &&
+        !(state.releaseDates[s.id] && s.sold);
+    })
       .sort(function(a,b){ return (a.arrivalDate||'').localeCompare(b.arrivalDate||''); });
     var pendingSold = pending.reduce(function(a,s){ return a+s.sold; },0);
     var pendingRows = pending.map(function(s){
@@ -1826,7 +1875,7 @@
         '<td class="muted">'+esc(s.goods)+'</td>'+
         '<td class="muted">'+esc(s.containerNumber)+'</td>'+
         '<td>'+fmtDate(s.arrivalDate)+'</td>'+
-        '<td class="num">'+fmt(s.sold)+'</td>'+
+        '<td class="num">'+(s.sold ? fmt(s.sold) : '<span class="pill" style="font-weight:400;">Amount TBD</span>')+'</td>'+
         '<td class="muted">'+esc(s.fileNumber)+'</td>'+
       '</tr>';
     }).join('');
