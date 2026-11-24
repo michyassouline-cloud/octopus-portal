@@ -830,6 +830,59 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return overrides;
   }
 
+  // Reads the workbook's "Released" tab: container number -> release date
+  // (ISO), plus file number -> release date as a fallback. Column layout
+  // (0-indexed), confirmed against the real sheet: 8 / 19 = Container
+  // Number, 21 = File Number, 26 = "Release" date. Merge-aware, because one
+  // release date is often merged across every container of a file.
+  function parseReleasedTab2026(wb){
+    var out = { byContainer:{}, byFile:{} };
+    var sn = wb.SheetNames.find(function(s){ return s.trim().toLowerCase()==='released'; });
+    if(!sn) return out;
+    var ws = wb.Sheets[sn];
+    if(!ws) return out;
+    var merges = ws['!merges'] || [];
+    function cellVal(rowIdx, colIdx){
+      var cell = ws[XLSX.utils.encode_cell({ r:rowIdx, c:colIdx })];
+      if(cell && cell.v !== undefined && cell.v !== '') return cell.v;
+      for(var k=0;k<merges.length;k++){
+        var m = merges[k];
+        if(rowIdx>=m.s.r && rowIdx<=m.e.r && colIdx>=m.s.c && colIdx<=m.e.c){
+          var top = ws[XLSX.utils.encode_cell({ r:m.s.r, c:m.s.c })];
+          return top ? top.v : '';
+        }
+      }
+      return '';
+    }
+    var range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
+    for(var r=1; r<=range.e.r; r++){
+      var rel = parseArrivalISO(cellVal(r, 26));
+      if(!rel) continue;
+      [cellVal(r, 8), cellVal(r, 19)].forEach(function(cn){
+        cn = String(cn||'').trim().toUpperCase();
+        if(cn) out.byContainer[cn] = rel;
+      });
+      var fn = String(cellVal(r, 21)||'').trim();
+      if(fn && /^\d{5,}$/.test(fn)) out.byFile[fn] = rel;
+    }
+    return out;
+  }
+  // Fills in a release date from the sheet's Released tab for every 2026
+  // shipment that doesn't already have one logged in the ledger (a date
+  // logged by hand in the ledger always wins). Returns how many were added.
+  function applySheetReleaseDates(records, released){
+    var added = 0;
+    records.forEach(function(rec){
+      if(state.releaseDates[rec.id]) return;
+      var containers = String(rec.containerNumber||'').split(',').map(function(c){ return c.trim().toUpperCase(); }).filter(Boolean);
+      var date = '';
+      for(var i=0;i<containers.length && !date;i++) date = released.byContainer[containers[i]] || '';
+      if(!date && rec.fileNumber) date = released.byFile[String(rec.fileNumber).trim()] || '';
+      if(date){ state.releaseDates[rec.id] = date; added++; }
+    });
+    return added;
+  }
+
   function parsePartnerSheet2026(wb, sheetName, updatesOverrides){
     var ws = wb.Sheets[sheetName];
     if(!ws) return [];
@@ -1221,6 +1274,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           return false;
         }
         assignShipmentIds(newShipments.concat(newNotFinished));
+        // Released tab -> release dates (only where none is logged yet).
+        try { applySheetReleaseDates(newShipments.concat(newNotFinished), parseReleasedTab2026(wb)); }
+        catch(e){ console.error('Released tab:', e); }
         spliceYear(shipments, 2026, newShipments);
         spliceYear(notFinished, 2026, newNotFinished);
         state.meta.lastSync = new Date().toISOString();
