@@ -250,6 +250,41 @@
   .seg{ display:flex; border:1px solid var(--border); border-radius:9px; overflow:hidden; }
   .seg button{ flex:1; padding:8px 10px; border:none; background:var(--surface); color:var(--ink-dim); font-weight:600; font-size:12.5px; cursor:pointer; }
   .seg button.active{ background:var(--accent); color:#fff; }
+  .wf-cellnote{ font-size:11.5px; color:var(--ink-faint); margin-top:2px; font-weight:400; }
+  .wf-week th, .wf-week td{ white-space:nowrap; }
+  .wf-grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0 12px; }
+  .wf-modal{ max-width:640px; width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow:auto; }
+  .wf-remarks{ display:flex; flex-direction:column; gap:6px; max-height:180px; overflow:auto; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
+  .wf-remark{ font-size:12.5px; }
+  .wf-remark-date{ display:block; font-size:11px; color:var(--ink-faint); }
+  .wf-label{ font-size:12px; font-weight:600; color:var(--ink-dim); margin-bottom:4px; }
+  .wf-cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+  .wf-card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
+  .wf-mini{ width:100%; margin-top:10px; font-size:12.5px; border-collapse:collapse; }
+  .wf-mini th, .wf-mini td{ padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
+  .wf-mini .num{ text-align:right; }
+  .wf-price-row{ display:grid; grid-template-columns:2fr 1fr 1.3fr auto; gap:6px; margin-bottom:6px; }
+  .wf-price-row input{ min-width:0; }
+  .wf-task{ display:flex; align-items:flex-start; gap:10px; padding:8px 0; border-bottom:1px dashed var(--border); cursor:pointer; }
+  .wf-task:last-child{ border-bottom:none; }
+  .wf-task input[type=checkbox]{ width:18px; height:18px; margin-top:2px; accent-color:var(--accent); flex:none; }
+  .wf-task.done .wf-task-title{ text-decoration:line-through; color:var(--ink-faint); }
+  .wf-task-title{ display:block; font-size:13.5px; }
+  .wf-select{ padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; }
+  .dmy-wrap{ position:relative; display:inline-flex; align-items:center; }
+  .field .dmy-wrap{ width:100%; }
+  .field .dmy-wrap input{ width:100%; padding-right:38px; }
+  .dmy-wrap input{ padding-right:36px; }
+  .dmy-cal{ position:absolute; right:4px; top:50%; transform:translateY(-50%); border:none; background:none; cursor:pointer; font-size:15px; padding:4px 6px; line-height:1; border-radius:6px; }
+  .dmy-cal:hover{ background:var(--surface-2); }
+  .dmy-picker{ position:absolute; right:0; bottom:0; width:1px; height:1px; opacity:0; pointer-events:none; border:0; padding:0; }
+  .mm-filters{ display:flex; gap:10px; flex-wrap:wrap; align-items:flex-end; margin-bottom:14px; }
+  .mm-f{ display:flex; flex-direction:column; gap:4px; font-size:11.5px; font-weight:600; color:var(--ink-dim); }
+  .mm-f input{ padding:6px 8px; border:1px solid var(--border); border-radius:8px; background:var(--surface); color:var(--ink); font:inherit; font-size:12.5px; width:140px; }
+  @media print{ .dmy-cal{ display:none; } }
+  .nav-badge{ margin-left:auto; background:var(--danger); color:#fff; font-size:11px; font-weight:700; border-radius:10px; padding:1px 7px; line-height:16px; }
+  .wf-alert{ border:1px solid var(--danger); background:var(--danger-soft); border-radius:14px; padding:14px 16px; }
+  .wf-alert .table-wrap{ background:var(--surface); }
   .field-error{ font-size:11.5px; color:var(--danger); }
 
   .toastwrap{ position:fixed; bottom:20px; right:20px; z-index:100; display:flex; flex-direction:column; gap:8px; }
@@ -385,6 +420,12 @@
       <button class="navitem" data-view="customers"><span class="dot"></span>Customers</button>
       <button class="navitem" data-view="paymentlog"><span class="dot"></span>Payment Log</button>
       <button class="navitem" data-view="backups"><span class="dot"></span>Backups</button>
+      <div class="navlabel">Workflow</div>
+      <button class="navitem" data-view="problems"><span class="dot"></span>Problems</button>
+      <button class="navitem" data-view="agreements"><span class="dot"></span>Agreements</button>
+      <button class="navitem" data-view="tasks"><span class="dot"></span>Tasks</button>
+      <button class="navitem" data-view="banks"><span class="dot"></span>Banks</button>
+      <button class="navitem" data-view="mymoney"><span class="dot"></span>My Money</button>
     </nav>
     <div class="sidebar-foot" id="sidebarfoot">Shipment data synced from Drive.</div>
     <div class="sidebar-foot" id="syncstatus" style="margin-top:2px;display:flex;align-items:center;gap:6px;">
@@ -426,6 +467,11 @@
     <section class="view" id="view-search"></section>
     <section class="view" id="view-statement"></section>
     <section class="view" id="view-backups"></section>
+    <section class="view" id="view-problems"></section>
+    <section class="view" id="view-agreements"></section>
+    <section class="view" id="view-tasks"></section>
+    <section class="view" id="view-banks"></section>
+    <section class="view" id="view-mymoney"></section>
   </main>
 </div>
 
@@ -600,6 +646,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     s.releaseDates = s.releaseDates || {};
     s.consigneeNationality = s.consigneeNationality || {};
     s.meta = s.meta || {};
+    s.problems = s.problems || [];
+    s.agreements = s.agreements || [];
+    s.tasks = s.tasks || [];
     return s;
   }
 
@@ -1392,7 +1441,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(ACCESS.full) return true;
     if(ACCESS.scope==='account'){
       return view==='overview' || view==='customers' || view==='paymentlog' || view==='search' || view==='statement' ||
-        view==='account-Deia' || view==='notfinished-Deia' || view==='extworker-Deia' || view==='officeexp-Deia';
+        view==='account-Deia' || view==='notfinished-Deia' || view==='extworker-Deia' || view==='officeexp-Deia' ||
+        view==='problems' || view==='agreements' || view==='tasks';
     }
     if(ACCESS.scope==='external-only'){
       return view==='extworker-Michy' || view==='extworker-Deia' || view==='extworker-Ayman' ||
@@ -2315,6 +2365,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           '<div class="table-wrap"><table><thead><tr><th>Saved</th><th>Type</th><th class="num">Customer payments</th><th class="num">NASA payments</th><th class="num">Opening balances</th><th></th></tr></thead>'+
           '<tbody>'+(trs || '<tr><td colspan="6" class="empty">No backups yet — the first one is made automatically today.</td></tr>')+'</tbody></table></div></div>'+
           '<div class="hint" style="margin-top:10px;">Restoring replaces the current money data with the chosen copy. The data as it is right before the restore is saved first (“Before restore”), so a restore can itself be undone.</div>';
+        fillBankBackups(root);
+        fillPrivBackups(root);
       })
       .catch(function(e){
         root.innerHTML = head + '<div class="table-wrap"><div class="empty" style="padding:18px;">Could not load backups ('+esc(e.message)+').</div></div></div>';
@@ -2370,6 +2422,1077 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       openConfirmModal('Replace ALL current money data (payments, opening balances, release dates…) with the copy saved '+fmtStamp(br.savedAt)+'? The current data is saved first as “Before restore”.', function(){ restoreBackup(br); }, 'Restore');
       return;
     }
+  });
+
+
+  // =====================================================================
+  // WORKFLOW MODULE — Money by week (overview), Problems, Agreements,
+  // Tasks, Banks. Problems / Agreements / Tasks live in the shared ledger
+  // state (merge-safe saves, daily backups). Banks live in their own cloud
+  // row (ledger_bank_data), loaded only for the full-access user.
+  // =====================================================================
+  var PEOPLE = ['michy','deia','ayman','suha','anas','rateb'];
+  var PERSON_LABEL = { michy:'Michy', deia:'Deia', ayman:'Ayman', suha:'Suha', anas:'Anas', rateb:'Rateb' };
+  var NORMAL_COST_ESTIMATE = 12000; // per Normal container with no cost on the sheet yet
+  function wfEnsure(){
+    state.problems = state.problems || [];
+    state.agreements = state.agreements || [];
+    state.tasks = state.tasks || [];
+  }
+  wfEnsure();
+  function me(){ return (ACCESS.label||'').toLowerCase(); }
+  function wfAccounts(){ return accessibleAccounts(); }
+  function canSeeAccount(a){ return ACCESS.full || accessibleAccounts().indexOf(a) > -1; }
+  function personName(p){ return PERSON_LABEL[p] || p || '—'; }
+  function containerCount(s){ return String(s.containerNumber||'').split(',').filter(function(c){ return c.trim(); }).length || 1; }
+  function addDaysISO(iso, n){ var d = new Date(iso+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+  function weekStartISO(iso){ var d = new Date(iso+'T00:00:00Z'); return addDaysISO(iso, -d.getUTCDay()); } // weeks run Sunday–Saturday
+  function fmtShort(iso){ var d = new Date(iso+'T00:00:00'); return isNaN(d) ? iso : d.toLocaleDateString('en-GB',{day:'2-digit',month:'short'}); }
+  function remarkListHTML(list){
+    list = (list||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    if(!list.length) return '<div class="muted" style="font-size:12.5px;">No remarks yet.</div>';
+    return list.map(function(r){
+      return '<div class="wf-remark"><span class="wf-remark-date">'+fmtDate(r.date)+(r.by?' · '+esc(personName(r.by)):'')+'</span>'+esc(r.text)+'</div>';
+    }).join('');
+  }
+  function newRemark(text){ return { id:uid(), date:todayISO(), text:text, by:me() }; }
+
+  // ---------- 1. Money by week (Overview) ----------
+  // Every 2026 file not invoiced and not yet released, bucketed by arrival week:
+  //   pay out  = what we owe NASA for it (Paid + Additional cost); a Normal
+  //              container with no cost yet is estimated at 12,000;
+  //   collect  = what the customer will owe for it (Sold).
+  function weeklyMoney(){
+    var today = todayISO(), thisWeek = weekStartISO(today);
+    var weeks = [0,1,2,3].map(function(i){ return addDaysISO(thisWeek, 7*i); });
+    var buckets = [{ key:'waiting', label:'Arrived, not released yet', sub:'at the port now' }]
+      .concat(weeks.map(function(w, i){ return { key:w, label: i===0 ? 'This week' : (i===1 ? 'Next week' : 'In '+i+' weeks'), sub: fmtShort(w)+' – '+fmtShort(addDaysISO(w,6)) }; }))
+      .concat([{ key:'later', label:'Later', sub:'after '+fmtShort(addDaysISO(weeks[3],6)) }]);
+    var data = {};
+    buckets.forEach(function(b){ data[b.key] = {}; wfAccounts().forEach(function(a){ data[b.key][a] = { containers:0, payKnown:0, payEstimated:0, estContainers:0, noCostContainers:0, collect:0, noPriceContainers:0 }; }); });
+    notFinished.forEach(function(s){
+      if(s.year !== 2026 || !canSeeAccount(s.account) || !data.waiting[s.account]) return;
+      if(state.releaseDates[s.id]) return;
+      if(!s.arrivalDate) return;
+      var key;
+      if(s.arrivalDate <= today) key = 'waiting';
+      else {
+        var ws = weekStartISO(s.arrivalDate);
+        key = weeks.indexOf(ws) > -1 ? ws : (ws > weeks[3] ? 'later' : 'waiting');
+      }
+      var cell = data[key][s.account], n = containerCount(s);
+      cell.containers += n;
+      var cost = (Number(s.paid)||0) + (Number(s.additionalCost)||0);
+      var isNormal = String(s.goods||'').trim().toLowerCase()==='normal';
+      if(cost > 0) cell.payKnown += cost;
+      else if(isNormal){ cell.payEstimated += NORMAL_COST_ESTIMATE * n; cell.estContainers += n; }
+      else cell.noCostContainers += n;
+      if(Number(s.sold) > 0) cell.collect += Number(s.sold);
+      else cell.noPriceContainers += n;
+    });
+    return { buckets:buckets, data:data };
+  }
+  function weeklyMoneyHTML(){
+    var wm = weeklyMoney(), accts = wfAccounts();
+    var head = '<tr><th>When</th>'+accts.map(function(a){ return '<th class="num" colspan="2" style="color:'+ACCOUNT_COLOR[a]+'">'+a+'</th>'; }).join('')+(accts.length>1?'<th class="num" colspan="2">All</th>':'')+'</tr>'+
+      '<tr><th></th>'+accts.concat(accts.length>1?['All']:[]).map(function(){ return '<th class="num" style="font-size:11px;">We pay</th><th class="num" style="font-size:11px;">Customers owe</th>'; }).join('')+'</tr>';
+    var rows = wm.buckets.map(function(b){
+      var tot = { pay:0, est:0, collect:0, cont:0 };
+      var cells = accts.map(function(a){
+        var c = wm.data[b.key][a];
+        tot.pay += c.payKnown + c.payEstimated; tot.est += c.payEstimated; tot.collect += c.collect; tot.cont += c.containers;
+        if(!c.containers) return '<td class="num muted">—</td><td class="num muted">—</td>';
+        var notes = [];
+        if(c.estContainers) notes.push(c.estContainers+' Normal est. @12,000');
+        if(c.noCostContainers) notes.push(c.noCostContainers+' no cost yet');
+        return '<td class="num" title="'+c.containers+' containers">'+fmt(c.payKnown + c.payEstimated)+
+            '<div class="wf-cellnote">'+c.containers+' cont.'+(notes.length?' · '+esc(notes.join(' · ')):'')+'</div></td>'+
+          '<td class="num">'+fmt(c.collect)+(c.noPriceContainers?'<div class="wf-cellnote">'+c.noPriceContainers+' no price yet</div>':'')+'</td>';
+      }).join('');
+      var all = accts.length>1 ? '<td class="num" style="font-weight:700;">'+(tot.cont?fmt(tot.pay):'—')+(tot.cont?'<div class="wf-cellnote">'+tot.cont+' cont.</div>':'')+'</td><td class="num" style="font-weight:700;">'+(tot.cont?fmt(tot.collect):'—')+'</td>' : '';
+      return '<tr><td><b>'+esc(b.label)+'</b><div class="wf-cellnote">'+esc(b.sub)+'</div></td>'+cells+all+'</tr>';
+    }).join('');
+    return '<div class="section"><div class="section-head"><h2>Money by week</h2><span class="hint">2026 files not invoiced and not released yet, by arrival week (Sun–Sat). “We pay” = cost to NASA; Normal containers with no cost yet are estimated at 12,000 each.</span></div>'+
+      '<div class="table-wrap" style="overflow-x:auto;"><table class="wf-week">'+'<thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div></div>';
+  }
+
+  // ---------- 3/5/6. Problems ----------
+  var PROBLEM_TYPES = {
+    stuck:      { label:'Stuck / seized goods', short:'Stuck / seized' },
+    discount:   { label:'Discount awaiting at port / warehouse', short:'Port discount' },
+    settlement: { label:'Settlement with customer', short:'Settlement' }
+  };
+  var STUCK_ISSUES = ['Seized','Stuck at port','Held by customs','Damaged','Missing','Other'];
+  var DISCOUNT_STATUSES = ['Requested','Approved','Received'];
+  var problemFilter = { type:'all', status:'open', account:'all' };
+  function visibleProblems(){ return state.problems.filter(function(p){ return canSeeAccount(p.account); }); }
+  function renderProblems(){
+    var root = document.getElementById('view-problems');
+    var all = visibleProblems();
+    var list = all.filter(function(p){
+      if(problemFilter.type!=='all' && p.type!==problemFilter.type) return false;
+      if(problemFilter.status!=='all' && (p.status||'open')!==problemFilter.status) return false;
+      if(problemFilter.account!=='all' && p.account!==problemFilter.account) return false;
+      if(searchTerm){
+        var hay = (p.customer+' '+p.containers+' '+p.fileNumber+' '+p.goods+' '+p.description+' '+(p.place||'')).toLowerCase();
+        if(hay.indexOf(searchTerm) === -1) return false;
+      }
+      return true;
+    }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
+    var open = all.filter(function(p){ return (p.status||'open')==='open'; });
+    var sum = function(arr, f){ return arr.reduce(function(a,p){ return a+(Number(p[f])||0); }, 0); };
+    var stuckOpen = open.filter(function(p){ return p.type==='stuck'; });
+    var discOpen = open.filter(function(p){ return p.type==='discount'; });
+    var settOpen = open.filter(function(p){ return p.type==='settlement'; });
+    var cards =
+      '<div class="grid-cards">'+
+        '<div class="card"><div class="card-label">Stuck / seized — open</div><div class="card-value">'+stuckOpen.length+'</div><div class="card-sub">Goods value '+fmt(sum(stuckOpen,'value'))+'</div></div>'+
+        '<div class="card"><div class="card-label">Port discounts awaiting</div><div class="card-value">'+fmt(sum(discOpen,'amount'))+'</div><div class="card-sub">'+discOpen.length+' open request'+(discOpen.length===1?'':'s')+'</div></div>'+
+        '<div class="card"><div class="card-label">Settlements — still to pay</div><div class="card-value">'+fmt(sum(settOpen,'amount') - sum(settOpen,'paidAmount'))+'</div><div class="card-sub">'+settOpen.length+' open · agreed total '+fmt(sum(settOpen,'amount'))+'</div></div>'+
+      '</div>';
+    function seg(name, opts, cur){
+      return '<div class="seg" style="display:inline-flex;">'+opts.map(function(o){ return '<button data-pf="'+name+':'+o[0]+'" class="'+(cur===o[0]?'active':'')+'">'+o[1]+'</button>'; }).join('')+'</div>';
+    }
+    var filters = '<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">'+
+      seg('type', [['all','All'],['stuck','Stuck / seized'],['discount','Port discount'],['settlement','Settlement']], problemFilter.type)+
+      seg('status', [['open','Open'],['resolved','Resolved'],['all','All']], problemFilter.status)+
+      (wfAccounts().length>1 ? seg('account', [['all','All agents']].concat(wfAccounts().map(function(a){ return [a,a]; })), problemFilter.account) : '')+
+      '<span style="flex:1"></span><button class="btn primary" data-wf-new="problem">+ New problem</button></div>';
+    var rows = list.map(function(p){
+      var t = PROBLEM_TYPES[p.type] || { short:p.type };
+      var detail = '', money = '';
+      if(p.type==='stuck'){ detail = esc(p.issue||'')+(p.goods?' · '+esc(p.goods):''); money = 'Value '+fmt(p.value); }
+      if(p.type==='discount'){ detail = esc(p.place||'')+(p.discountStatus?' · <span class="pill '+(p.discountStatus==='Received'?'good':(p.discountStatus==='Approved'?'accent':'warn'))+'">'+esc(p.discountStatus)+'</span>':''); money = 'Discount '+fmt(p.amount); }
+      if(p.type==='settlement'){ detail = (p.paidAmount ? 'Paid '+fmt(p.paidAmount)+' of '+fmt(p.amount) : 'Nothing paid yet'); money = 'Agreed '+fmt(p.amount); }
+      var lastRemark = (p.remarks||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); })[0];
+      return '<tr>'+
+        '<td>'+fmtDate(p.date)+'</td>'+
+        '<td><span class="pill">'+esc(t.short)+'</span></td>'+
+        '<td><b>'+esc(p.customer||'—')+'</b> <span class="pill" style="background:'+(ACCOUNT_COLOR[p.account]||'#888')+'22;color:'+(ACCOUNT_COLOR[p.account]||'#888')+'">'+esc(p.account)+'</span>'+
+          '<div class="wf-cellnote">'+esc([p.containers, p.fileNumber?('file '+p.fileNumber):''].filter(Boolean).join(' · '))+'</div></td>'+
+        '<td>'+detail+(p.description?'<div class="wf-cellnote">'+esc(p.description)+'</div>':'')+(lastRemark?'<div class="wf-cellnote">💬 '+fmtShort(lastRemark.date)+': '+esc(lastRemark.text)+'</div>':'')+'</td>'+
+        '<td class="num">'+money+'</td>'+
+        '<td>'+((p.status||'open')==='open' ? '<span class="pill warn">Open</span>' : '<span class="pill good">Resolved '+(p.resolvedAt?fmtShort(p.resolvedAt):'')+'</span>')+'</td>'+
+        '<td style="white-space:nowrap;"><button class="btn small" data-wf-edit-problem="'+p.id+'">Open</button></td>'+
+      '</tr>';
+    }).join('');
+    root.innerHTML = cards + filters +
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Type</th><th>Customer</th><th>Details</th><th class="num">Amount</th><th>Status</th><th></th></tr></thead>'+
+      '<tbody>'+(rows || '<tr><td colspan="7" class="empty">Nothing here yet — use “+ New problem”.</td></tr>')+'</tbody></table></div>';
+  }
+  function openProblemModal(id){
+    var p = id ? state.problems.find(function(x){ return x.id===id; }) : null;
+    var isNew = !p;
+    p = p ? JSON.parse(JSON.stringify(p)) : { id:uid(), type:'stuck', account: wfAccounts()[0], status:'open', date: todayISO(), remarks:[] };
+    var accts = wfAccounts();
+    function opt(list, cur){ return list.map(function(v){ return '<option value="'+esc(v)+'" '+(v===cur?'selected':'')+'>'+esc(v)+'</option>'; }).join(''); }
+    var root = document.getElementById('modal-root');
+    root.innerHTML =
+      '<div class="overlay" id="wf-overlay"><div class="modal wf-modal">'+
+        '<h3>'+(isNew?'New problem':'Problem — '+esc(p.customer||''))+'</h3>'+
+        '<div class="modal-sub">Stuck or seized goods, a discount you\'re waiting for at the port, or a settlement agreed with a customer.</div>'+
+        '<form id="wf-problem-form">'+
+          '<div class="field"><label>Type</label><select id="wp-type">'+Object.keys(PROBLEM_TYPES).map(function(k){ return '<option value="'+k+'" '+(p.type===k?'selected':'')+'>'+PROBLEM_TYPES[k].label+'</option>'; }).join('')+'</select></div>'+
+          '<div class="wf-grid2">'+
+            '<div class="field"><label>Agent</label><select id="wp-account">'+opt(accts, p.account)+'</select></div>'+
+            '<div class="field"><label>Date</label><input type="date" id="wp-date" value="'+esc(p.date||todayISO())+'"></div>'+
+            '<div class="field"><label>Customer number / name</label><input id="wp-customer" value="'+esc(p.customer||'')+'" required></div>'+
+            '<div class="field"><label>File number</label><input id="wp-file" value="'+esc(p.fileNumber||'')+'"></div>'+
+          '</div>'+
+          '<div class="field"><label>Containers</label><input id="wp-containers" value="'+esc(p.containers||'')+'" placeholder="e.g. TCNU3428446, MRSU8685833"></div>'+
+          '<div class="wf-type wf-type-stuck">'+
+            '<div class="wf-grid2">'+
+              '<div class="field"><label>What happened</label><select id="wp-issue">'+opt(STUCK_ISSUES, p.issue||'Seized')+'</select></div>'+
+              '<div class="field"><label>Type of goods</label><input id="wp-goods" value="'+esc(p.goods||'')+'" placeholder="e.g. Toys, Electric"></div>'+
+              '<div class="field"><label>Value of goods</label><input type="number" step="0.01" id="wp-value" value="'+esc(p.value||'')+'"></div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="wf-type wf-type-discount">'+
+            '<div class="wf-grid2">'+
+              '<div class="field"><label>Port / warehouse</label><input id="wp-place" value="'+esc(p.place||'')+'" placeholder="e.g. Ashdod port, Hatara warehouse"></div>'+
+              '<div class="field"><label>Discount amount</label><input type="number" step="0.01" id="wp-discount" value="'+esc(p.type==='discount'?(p.amount||''):'')+'"></div>'+
+              '<div class="field"><label>Discount status</label><select id="wp-dstatus">'+opt(DISCOUNT_STATUSES, p.discountStatus||'Requested')+'</select></div>'+
+            '</div>'+
+          '</div>'+
+          '<div class="wf-type wf-type-settlement">'+
+            '<div class="wf-grid2">'+
+              '<div class="field"><label>Total agreed to pay the customer</label><input type="number" step="0.01" id="wp-settle" value="'+esc(p.type==='settlement'?(p.amount||''):'')+'"></div>'+
+              '<div class="field"><label>Paid to the customer so far</label><input type="number" step="0.01" id="wp-paid" value="'+esc(p.paidAmount||'')+'"></div>'+
+            '</div>'+
+            '<div class="hint" style="margin:-6px 0 12px; font-size:12px; color:var(--ink-faint);">To take it off the customer\'s balance, use “Record as refund” after saving — it logs a minus payment with this settlement as the reason.</div>'+
+          '</div>'+
+          '<div class="field"><label>Description</label><textarea id="wp-desc" rows="2">'+esc(p.description||'')+'</textarea></div>'+
+          '<div class="field"><label>Remarks</label><div class="wf-remarks">'+remarkListHTML(p.remarks)+'</div>'+
+            '<textarea id="wp-remark" rows="2" placeholder="Add a remark, e.g. agreed on 20.11 in WeChat"></textarea></div>'+
+          '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="wp-resolved" style="width:auto;" '+(p.status==='resolved'?'checked':'')+'> Resolved / finished</label></div>'+
+          '<div class="modal-actions">'+
+            (isNew ? '' : '<button type="button" class="btn ghost danger" id="wp-delete">Delete</button>')+
+            (!isNew && p.type==='settlement' && !p.refundPaymentId ? '<button type="button" class="btn ghost" id="wp-refund">Record as refund</button>' : '')+
+            '<span style="flex:1"></span>'+
+            '<button type="button" class="btn ghost" id="wp-cancel">Cancel</button>'+
+            '<button type="submit" class="btn primary">Save</button>'+
+          '</div>'+
+        '</form>'+
+      '</div></div>';
+    function showType(){
+      var t = document.getElementById('wp-type').value;
+      document.querySelectorAll('.wf-type').forEach(function(el){ el.style.display = el.classList.contains('wf-type-'+t) ? '' : 'none'; });
+    }
+    document.getElementById('wp-type').addEventListener('change', showType); showType();
+    document.getElementById('wp-cancel').addEventListener('click', closeModal);
+    document.getElementById('wf-overlay').addEventListener('click', function(e){ if(e.target.id==='wf-overlay') closeModal(); });
+    if(!isNew) document.getElementById('wp-delete').addEventListener('click', function(){
+      openConfirmModal('Delete this problem record for '+(p.customer||'')+'?', function(){
+        state.problems = state.problems.filter(function(x){ return x.id!==p.id; });
+        renderView(currentView); persist('Problem deleted.');
+      });
+    });
+    var refundBtn = document.getElementById('wp-refund');
+    if(refundBtn) refundBtn.addEventListener('click', function(){
+      var amt = Number(p.amount)||0;
+      if(!amt){ toast('Enter the agreed amount first and save.', true); return; }
+      openConfirmModal('Log a refund of '+fmt(amt)+' to '+p.customer+' ('+p.account+')? It goes in as a minus payment, so it raises what you owe them / lowers what they owe you.', function(){
+        var payId = uid();
+        state.customerPayments.push({ id:payId, customer:p.customer, account:p.account, amount:-amt, date:todayISO(), note:'Settlement: '+(p.description||'agreed settlement'), method:'cash', checkDate:'' });
+        var rec = state.problems.find(function(x){ return x.id===p.id; });
+        if(rec){ rec.refundPaymentId = payId; rec.remarks = (rec.remarks||[]).concat([newRemark('Refund of '+fmt(amt)+' recorded on the customer\'s balance')]); }
+        renderView(currentView); persist('Refund recorded.');
+      }, 'Record refund');
+    });
+    document.getElementById('wf-problem-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var t = document.getElementById('wp-type').value;
+      var rec = {
+        id:p.id, type:t, account:document.getElementById('wp-account').value, date:document.getElementById('wp-date').value || todayISO(),
+        customer:document.getElementById('wp-customer').value.trim(), fileNumber:document.getElementById('wp-file').value.trim(),
+        containers:document.getElementById('wp-containers').value.trim(), description:document.getElementById('wp-desc').value.trim(),
+        remarks:p.remarks||[], status: document.getElementById('wp-resolved').checked ? 'resolved' : 'open',
+        resolvedAt: document.getElementById('wp-resolved').checked ? (p.resolvedAt || todayISO()) : '',
+        refundPaymentId: p.refundPaymentId || ''
+      };
+      if(!rec.customer){ toast('Enter the customer.', true); return; }
+      if(!canSeeAccount(rec.account)){ toast('Not available for your account.', true); return; }
+      if(t==='stuck'){ rec.issue = document.getElementById('wp-issue').value; rec.goods = document.getElementById('wp-goods').value.trim(); rec.value = parseFloat(document.getElementById('wp-value').value)||0; }
+      if(t==='discount'){ rec.place = document.getElementById('wp-place').value.trim(); rec.amount = parseFloat(document.getElementById('wp-discount').value)||0; rec.discountStatus = document.getElementById('wp-dstatus').value; }
+      if(t==='settlement'){ rec.amount = parseFloat(document.getElementById('wp-settle').value)||0; rec.paidAmount = parseFloat(document.getElementById('wp-paid').value)||0; }
+      var rm = document.getElementById('wp-remark').value.trim();
+      if(rm) rec.remarks = rec.remarks.concat([newRemark(rm)]);
+      if(isNew) state.problems.push(rec);
+      else state.problems = state.problems.map(function(x){ return x.id===rec.id ? rec : x; });
+      closeModal(); renderView(currentView); persist(isNew ? 'Problem added.' : 'Problem saved.');
+    });
+  }
+
+  // ---------- 8. Agreements ----------
+  function renderAgreements(){
+    var root = document.getElementById('view-agreements');
+    var list = state.agreements.filter(function(a){ return canSeeAccount(a.account); }).filter(function(a){
+      if(!searchTerm) return true;
+      return (a.customer+' '+a.title+' '+a.terms+' '+(a.prices||[]).map(function(x){ return x.goods; }).join(' ')).toLowerCase().indexOf(searchTerm) > -1;
+    }).sort(function(a,b){ return (a.active===false) - (b.active===false) || String(a.customer).localeCompare(String(b.customer)); });
+    var cards = list.map(function(a){
+      var today = todayISO();
+      var expired = a.validTo && a.validTo < today;
+      var status = a.active===false ? '<span class="pill">Inactive</span>' : (expired ? '<span class="pill warn">Expired '+fmtShort(a.validTo)+'</span>' : '<span class="pill good">Active</span>');
+      var prices = (a.prices||[]).length ? '<table class="wf-mini"><thead><tr><th>Goods</th><th class="num">Min. containers</th><th class="num">Price / container</th></tr></thead><tbody>'+
+        a.prices.map(function(x){ return '<tr><td>'+esc(x.goods||'—')+'</td><td class="num">'+(x.minContainers?esc(x.minContainers):'—')+'</td><td class="num">'+fmt(x.price)+'</td></tr>'; }).join('')+'</tbody></table>' : '';
+      return '<div class="wf-card">'+
+        '<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">'+
+          '<div><div style="font-weight:700; font-size:15px;">'+esc(a.customer)+' <span class="pill" style="background:'+(ACCOUNT_COLOR[a.account]||'#888')+'22;color:'+(ACCOUNT_COLOR[a.account]||'#888')+'">'+esc(a.account)+'</span> '+status+'</div>'+
+          '<div class="wf-cellnote">'+esc(a.title||'')+((a.validFrom||a.validTo)?' · valid '+(a.validFrom?fmtDate(a.validFrom):'…')+' → '+(a.validTo?fmtDate(a.validTo):'open-ended'):'')+'</div></div>'+
+          '<button class="btn small" data-wf-edit-agreement="'+a.id+'">Edit</button>'+
+        '</div>'+
+        prices+
+        (a.terms ? '<div style="white-space:pre-wrap; font-size:13px; margin-top:8px;">'+esc(a.terms)+'</div>' : '')+
+        '<div style="margin-top:10px;"><div class="wf-label">Remarks</div>'+remarkListHTML(a.remarks)+'</div>'+
+      '</div>';
+    }).join('');
+    root.innerHTML =
+      '<div style="display:flex; justify-content:flex-end; margin-bottom:12px;"><button class="btn primary" data-wf-new="agreement">+ New agreement</button></div>'+
+      (cards ? '<div class="wf-cards">'+cards+'</div>' : '<div class="table-wrap"><div class="empty">No agreements yet. Write down any special pricing here so nobody has to ask again.</div></div>');
+  }
+  function openAgreementModal(id){
+    var a = id ? state.agreements.find(function(x){ return x.id===id; }) : null;
+    var isNew = !a;
+    a = a ? JSON.parse(JSON.stringify(a)) : { id:uid(), account: wfAccounts()[0], customer:'', title:'', terms:'', prices:[{goods:'Toys', minContainers:'', price:''}], validFrom:todayISO(), validTo:'', active:true, remarks:[] };
+    var root = document.getElementById('modal-root');
+    function priceRow(x){ return '<div class="wf-price-row"><input class="wf-pg" placeholder="Goods (e.g. Toys)" value="'+esc(x.goods||'')+'"><input class="wf-pm" type="number" placeholder="Min. containers" value="'+esc(x.minContainers||'')+'"><input class="wf-pp" type="number" step="0.01" placeholder="Price / container" value="'+esc(x.price||'')+'"><button type="button" class="btn small ghost danger wf-prm">✕</button></div>'; }
+    root.innerHTML =
+      '<div class="overlay" id="wf-overlay"><div class="modal wf-modal">'+
+        '<h3>'+(isNew?'New agreement':'Agreement — '+esc(a.customer))+'</h3>'+
+        '<div class="modal-sub">Special prices or terms agreed with a customer — written down once, for everyone.</div>'+
+        '<form id="wf-agreement-form">'+
+          '<div class="wf-grid2">'+
+            '<div class="field"><label>Agent</label><select id="wa-account">'+wfAccounts().map(function(v){ return '<option '+(v===a.account?'selected':'')+'>'+v+'</option>'; }).join('')+'</select></div>'+
+            '<div class="field"><label>Customer number / name</label><input id="wa-customer" value="'+esc(a.customer)+'" required></div>'+
+          '</div>'+
+          '<div class="field"><label>Short title</label><input id="wa-title" value="'+esc(a.title)+'" placeholder="e.g. Special price for 3 toys containers"></div>'+
+          '<div class="field"><label>Prices</label><div id="wa-prices">'+(a.prices||[]).map(priceRow).join('')+'</div><button type="button" class="btn small ghost" id="wa-addprice" style="align-self:flex-start;">+ Add price line</button></div>'+
+          '<div class="field"><label>Terms (anything else agreed)</label><textarea id="wa-terms" rows="3">'+esc(a.terms)+'</textarea></div>'+
+          '<div class="wf-grid2">'+
+            '<div class="field"><label>Valid from</label><input type="date" id="wa-from" value="'+esc(a.validFrom||'')+'"></div>'+
+            '<div class="field"><label>Valid until (optional)</label><input type="date" id="wa-to" value="'+esc(a.validTo||'')+'"></div>'+
+          '</div>'+
+          '<div class="field"><label>Remarks</label><div class="wf-remarks">'+remarkListHTML(a.remarks)+'</div><textarea id="wa-remark" rows="2" placeholder="e.g. agreed on 20.11 in WeChat"></textarea></div>'+
+          '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; cursor:pointer;"><input type="checkbox" id="wa-active" style="width:auto;" '+(a.active!==false?'checked':'')+'> Active</label></div>'+
+          '<div class="modal-actions">'+(isNew?'':'<button type="button" class="btn ghost danger" id="wa-delete">Delete</button>')+'<span style="flex:1"></span>'+
+            '<button type="button" class="btn ghost" id="wa-cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>'+
+        '</form></div></div>';
+    var pricesEl = document.getElementById('wa-prices');
+    document.getElementById('wa-addprice').addEventListener('click', function(){ pricesEl.insertAdjacentHTML('beforeend', priceRow({})); });
+    pricesEl.addEventListener('click', function(e){ if(e.target.classList.contains('wf-prm')) e.target.closest('.wf-price-row').remove(); });
+    document.getElementById('wa-cancel').addEventListener('click', closeModal);
+    document.getElementById('wf-overlay').addEventListener('click', function(e){ if(e.target.id==='wf-overlay') closeModal(); });
+    if(!isNew) document.getElementById('wa-delete').addEventListener('click', function(){
+      openConfirmModal('Delete the agreement with '+a.customer+'?', function(){ state.agreements = state.agreements.filter(function(x){ return x.id!==a.id; }); renderView(currentView); persist('Agreement deleted.'); });
+    });
+    document.getElementById('wf-agreement-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var rec = { id:a.id, account:document.getElementById('wa-account').value, customer:document.getElementById('wa-customer').value.trim(),
+        title:document.getElementById('wa-title').value.trim(), terms:document.getElementById('wa-terms').value.trim(),
+        validFrom:document.getElementById('wa-from').value, validTo:document.getElementById('wa-to').value,
+        active:document.getElementById('wa-active').checked, remarks:a.remarks||[],
+        prices: Array.prototype.map.call(pricesEl.querySelectorAll('.wf-price-row'), function(r){
+          return { goods:r.querySelector('.wf-pg').value.trim(), minContainers:r.querySelector('.wf-pm').value.trim(), price:parseFloat(r.querySelector('.wf-pp').value)||0 };
+        }).filter(function(x){ return x.goods || x.price; }) };
+      if(!rec.customer){ toast('Enter the customer.', true); return; }
+      var rm = document.getElementById('wa-remark').value.trim();
+      if(rm) rec.remarks = rec.remarks.concat([newRemark(rm)]);
+      if(isNew) state.agreements.push(rec); else state.agreements = state.agreements.map(function(x){ return x.id===rec.id ? rec : x; });
+      closeModal(); renderView(currentView); persist(isNew?'Agreement added.':'Agreement saved.');
+    });
+  }
+
+  // ---------- 4. Tasks ----------
+  var taskFilter = { account:'all', show:'open' };
+  function visibleTasks(){
+    return state.tasks.filter(function(t){ return ACCESS.full ? true : (t.assignee===me()); });
+  }
+  function renderTasks(){
+    var root = document.getElementById('view-tasks');
+    var tasks = visibleTasks().filter(function(t){
+      if(taskFilter.account!=='all' && t.account!==taskFilter.account) return false;
+      if(searchTerm && (t.title+' '+(t.note||'')).toLowerCase().indexOf(searchTerm)===-1) return false;
+      return true;
+    });
+    var groups = {};
+    tasks.forEach(function(t){ var k = t.assignee||'—'; (groups[k] = groups[k] || []).push(t); });
+    var people = Object.keys(groups).sort(function(a,b){ return PEOPLE.indexOf(a) - PEOPLE.indexOf(b); });
+    var today = todayISO();
+    var cols = people.map(function(p){
+      var all = groups[p], done = all.filter(function(t){ return t.done; }).length;
+      var shown = all.filter(function(t){ return taskFilter.show==='all' || !t.done; })
+        .sort(function(a,b){ return (a.done-b.done) || (a.due||'9999').localeCompare(b.due||'9999'); });
+      var pct = all.length ? Math.round(done/all.length*100) : 0;
+      return '<div class="wf-card">'+
+        '<div style="display:flex; justify-content:space-between; align-items:baseline;"><div style="font-weight:700; font-size:15px;">'+esc(personName(p))+'</div><div class="muted" style="font-size:12.5px;">'+done+' of '+all.length+' done</div></div>'+
+        '<div class="bar-track" style="margin:8px 0 10px;"><div class="bar-fill" style="width:'+pct+'%; background:'+(pct===100?'var(--good)':'var(--accent)')+'"></div></div>'+
+        (shown.length ? shown.map(function(t){
+          var overdue = !t.done && t.due && t.due < today;
+          return '<label class="wf-task'+(t.done?' done':'')+'"><input type="checkbox" data-wf-task-toggle="'+t.id+'" '+(t.done?'checked':'')+'>'+
+            '<span style="flex:1;"><span class="wf-task-title">'+esc(t.title)+'</span>'+
+            '<span class="wf-cellnote">'+[t.account ? esc(t.account) : '', t.due ? ((overdue?'<b style="color:var(--danger)">overdue · </b>':'')+'due '+fmtShort(t.due)) : '', t.note ? esc(t.note) : ''].filter(Boolean).join(' · ')+'</span></span>'+
+            '<button type="button" class="btn small ghost" data-wf-edit-task="'+t.id+'">Edit</button></label>';
+        }).join('') : '<div class="muted" style="font-size:13px; padding:6px 0;">'+(all.length?'All done ✓':'No tasks.')+'</div>')+
+      '</div>';
+    }).join('');
+    function seg(name, opts, cur){ return '<div class="seg" style="display:inline-flex;">'+opts.map(function(o){ return '<button data-tf="'+name+':'+o[0]+'" class="'+(cur===o[0]?'active':'')+'">'+o[1]+'</button>'; }).join('')+'</div>'; }
+    root.innerHTML =
+      '<div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:12px;">'+
+        (ACCESS.full ? seg('account', [['all','All agents']].concat(ACCOUNTS.map(function(a){ return [a,a]; })), taskFilter.account) : '')+
+        seg('show', [['open','To do'],['all','Include done']], taskFilter.show)+
+        '<span style="flex:1"></span><button class="btn primary" data-wf-new="task">+ New task</button></div>'+
+      (cols ? '<div class="wf-cards">'+cols+'</div>' : '<div class="table-wrap"><div class="empty">No tasks yet — use “+ New task”.</div></div>');
+  }
+  function openTaskModal(id){
+    var t = id ? state.tasks.find(function(x){ return x.id===id; }) : null;
+    var isNew = !t;
+    t = t ? JSON.parse(JSON.stringify(t)) : { id:uid(), title:'', assignee: me() || 'michy', account: ACCESS.full ? 'Michy' : (ACCESS.account||wfAccounts()[0]), due:'', note:'', done:false };
+    var people = ACCESS.full ? PEOPLE : [me()];
+    var root = document.getElementById('modal-root');
+    root.innerHTML =
+      '<div class="overlay" id="wf-overlay"><div class="modal">'+
+        '<h3>'+(isNew?'New task':'Edit task')+'</h3><div class="modal-sub">Shows up only on the assigned person\'s list (Michy sees everyone\'s).</div>'+
+        '<form id="wf-task-form">'+
+          '<div class="field"><label>Task</label><input id="wt-title" value="'+esc(t.title)+'" required></div>'+
+          '<div class="wf-grid2">'+
+            '<div class="field"><label>Person</label><select id="wt-person">'+people.map(function(p){ return '<option value="'+p+'" '+(p===t.assignee?'selected':'')+'>'+personName(p)+'</option>'; }).join('')+'</select></div>'+
+            '<div class="field"><label>Agent</label><select id="wt-account">'+wfAccounts().map(function(a){ return '<option '+(a===t.account?'selected':'')+'>'+a+'</option>'; }).join('')+'</select></div>'+
+            '<div class="field"><label>Due date (optional)</label><input type="date" id="wt-due" value="'+esc(t.due||'')+'"></div>'+
+          '</div>'+
+          '<div class="field"><label>Note (optional)</label><textarea id="wt-note" rows="2">'+esc(t.note||'')+'</textarea></div>'+
+          '<div class="modal-actions">'+(isNew?'':'<button type="button" class="btn ghost danger" id="wt-delete">Delete</button>')+'<span style="flex:1"></span>'+
+            '<button type="button" class="btn ghost" id="wt-cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>'+
+        '</form></div></div>';
+    document.getElementById('wt-cancel').addEventListener('click', closeModal);
+    document.getElementById('wf-overlay').addEventListener('click', function(e){ if(e.target.id==='wf-overlay') closeModal(); });
+    if(!isNew) document.getElementById('wt-delete').addEventListener('click', function(){
+      state.tasks = state.tasks.filter(function(x){ return x.id!==t.id; }); closeModal(); renderView(currentView); persist('Task deleted.');
+    });
+    document.getElementById('wf-task-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var rec = Object.assign({}, t, { title:document.getElementById('wt-title').value.trim(), assignee:document.getElementById('wt-person').value,
+        account:document.getElementById('wt-account').value, due:document.getElementById('wt-due').value, note:document.getElementById('wt-note').value.trim() });
+      if(!rec.title){ toast('Write the task.', true); return; }
+      if(isNew){ rec.createdBy = me(); rec.createdAt = todayISO(); state.tasks.push(rec); }
+      else state.tasks = state.tasks.map(function(x){ return x.id===rec.id ? rec : x; });
+      closeModal(); renderView(currentView); persist(isNew?'Task added.':'Task saved.');
+    });
+  }
+
+  // ---------- 2. Banks (full-access user only; separate cloud row) ----------
+  var BANK_KEY = 'ledger_bank_data', BANK_BACKUP_PREFIX = 'ledger_bank_backup_';
+  var bank = null, bankBaseline = null, bankLoading = null, bankFilter = { acct:'all', month:'all' };
+  function bankDefaults(){ return { accounts:[ { id:'bank_china', name:'China', currency:'RMB', opening:0 }, { id:'bank_palestine', name:'Palestine', currency:'ILS', opening:0 } ], tx:[] }; }
+  function loadBank(){
+    if(bankLoading) return bankLoading;
+    bankLoading = fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+BANK_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        bank = rows && rows[0] ? JSON.parse(rows[0].value) : bankDefaults();
+        bank.accounts = bank.accounts || []; bank.tx = bank.tx || [];
+        bankBaseline = deepCopy(bank);
+        ensureDailyBankBackup(rows && rows[0] ? bank : null);
+        return bank;
+      })
+      .catch(function(e){ bankLoading = null; throw e; });
+    return bankLoading;
+  }
+  var bankBackupDoneFor = null;
+  function ensureDailyBankBackup(cloudBank){
+    var today = localDateISO();
+    if(!cloudBank || bankBackupDoneFor===today) return;
+    var dayNo = Math.floor(Date.parse(today+'T00:00:00Z')/86400000), key = BANK_BACKUP_PREFIX+'day'+(dayNo % BACKUP_DAYS);
+    fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+key+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(rows){
+        var ex = null; try { ex = rows && rows[0] ? JSON.parse(rows[0].value) : null; } catch(e){}
+        if(ex && ex.date===today){ bankBackupDoneFor = today; return; }
+        return sbWriteSetting(key, { date:today, savedAt:new Date().toISOString(), reason:'Automatic daily backup — bank data', bank: cloudBank }).then(function(res){ if(res.ok) bankBackupDoneFor = today; });
+      }).catch(function(){});
+  }
+  function saveBank(msg){
+    return fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+BANK_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        var cloud = rows && rows[0] ? JSON.parse(rows[0].value) : null;
+        if(cloud) ensureDailyBankBackup(cloud);
+        var merged = cloud ? mergeLedgerStates(bankBaseline, bank, cloud) : bank;
+        return sbWriteSetting(BANK_KEY, merged).then(function(res){
+          if(!res.ok) throw new Error(res.detail);
+          bank = merged; bankBaseline = deepCopy(merged);
+          if(msg) toast(msg);
+          if(currentView==='banks') renderBanks();
+        });
+      })
+      .catch(function(e){ toast('Bank data NOT saved — '+e.message+'. Nothing was overwritten; try again.', true); });
+  }
+  function bankBalance(acctId){
+    var a = bank.accounts.find(function(x){ return x.id===acctId; });
+    return (Number(a && a.opening)||0) + bank.tx.filter(function(t){ return t.bankId===acctId; }).reduce(function(s,t){ return s+(Number(t.amount)||0); }, 0);
+  }
+  function renderBanks(){
+    var root = document.getElementById('view-banks');
+    if(!ACCESS.full){ root.innerHTML = '<div class="empty">Not available for your account.</div>'; return; }
+    if(!bank){
+      root.innerHTML = '<div class="empty">Loading bank data…</div>';
+      loadBank().then(function(){ if(currentView==='banks') renderBanks(); }, function(e){ root.innerHTML = '<div class="empty">Could not load bank data ('+esc(e.message)+'). Reload to try again.</div>'; });
+      return;
+    }
+    var cards = bank.accounts.map(function(a){
+      var txs = bank.tx.filter(function(t){ return t.bankId===a.id; });
+      var thisMonth = todayISO().slice(0,7);
+      var mIn = txs.filter(function(t){ return (t.date||'').slice(0,7)===thisMonth && t.amount>0; }).reduce(function(s,t){ return s+t.amount; },0);
+      var mOut = txs.filter(function(t){ return (t.date||'').slice(0,7)===thisMonth && t.amount<0; }).reduce(function(s,t){ return s+t.amount; },0);
+      var last = txs.slice().sort(function(x,y){ return (y.date||'').localeCompare(x.date||''); })[0];
+      return '<div class="card"><div class="card-label">'+esc(a.name)+' · '+esc(a.currency)+'</div><div class="card-value'+(bankBalance(a.id)<0?' row-neg':'')+'">'+fmt(bankBalance(a.id))+'</div>'+
+        '<div class="card-sub">This month: in '+fmt(mIn)+' · out '+fmt(-mOut)+(last?' · last entry '+fmtShort(last.date):'')+'</div>'+
+        '<div style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap;"><button class="btn small" data-bank-add="'+a.id+'">+ Entry</button><button class="btn small ghost" data-bank-import="'+a.id+'">Upload statement</button><button class="btn small ghost" data-bank-edit="'+a.id+'">Settings</button></div></div>';
+    }).join('');
+    var months = {}; bank.tx.forEach(function(t){ if(t.date) months[t.date.slice(0,7)] = true; });
+    var monthList = Object.keys(months).sort().reverse();
+    var list = bank.tx.filter(function(t){
+      if(bankFilter.acct!=='all' && t.bankId!==bankFilter.acct) return false;
+      if(bankFilter.month!=='all' && (t.date||'').slice(0,7)!==bankFilter.month) return false;
+      if(searchTerm && (t.description+' '+(t.ref||'')).toLowerCase().indexOf(searchTerm)===-1) return false;
+      return true;
+    }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.seq||0)-(a.seq||0); });
+    var acctName = {}; bank.accounts.forEach(function(a){ acctName[a.id] = a.name+' ('+a.currency+')'; });
+    var rows = list.slice(0,400).map(function(t){
+      return '<tr><td>'+fmtDate(t.date)+'</td><td>'+esc(acctName[t.bankId]||t.bankId)+'</td><td>'+esc(t.description||'')+(t.ref?'<div class="wf-cellnote">'+esc(t.ref)+'</div>':'')+'</td>'+
+        '<td class="num" style="color:'+(t.amount<0?'var(--danger)':'var(--good)')+'">'+(t.amount>0?'+':'')+fmt(t.amount)+'</td>'+
+        '<td>'+(t.source==='import'?'<span class="pill">imported</span>':'')+'</td>'+
+        '<td><button class="btn small ghost danger" data-bank-del="'+t.id+'">Remove</button></td></tr>';
+    }).join('');
+    root.innerHTML =
+      '<div class="grid-cards">'+cards+'<div class="card" style="display:flex; align-items:center; justify-content:center;"><button class="btn ghost" data-bank-newacct>+ Add another bank account</button></div></div>'+
+      '<div class="section"><div class="section-head"><h2>Movements</h2><span class="hint" style="display:flex; gap:8px; align-items:center;">'+
+        '<select id="bank-f-acct" class="wf-select"><option value="all">All accounts</option>'+bank.accounts.map(function(a){ return '<option value="'+a.id+'" '+(bankFilter.acct===a.id?'selected':'')+'>'+esc(a.name)+'</option>'; }).join('')+'</select>'+
+        '<select id="bank-f-month" class="wf-select"><option value="all">All months</option>'+monthList.map(function(m){ return '<option '+(bankFilter.month===m?'selected':'')+'>'+m+'</option>'; }).join('')+'</select></span></div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>Account</th><th>Description</th><th class="num">Amount</th><th></th><th></th></tr></thead><tbody>'+
+        (rows || '<tr><td colspan="6" class="empty">No movements yet — add an entry or upload a statement.</td></tr>')+'</tbody></table></div>'+
+      (list.length>400?'<div class="hint" style="margin-top:6px;">Showing the latest 400 — filter by month to see older ones.</div>':'')+'</div>';
+    document.getElementById('bank-f-acct').addEventListener('change', function(e){ bankFilter.acct = e.target.value; renderBanks(); });
+    document.getElementById('bank-f-month').addEventListener('change', function(e){ bankFilter.month = e.target.value; renderBanks(); });
+  }
+  function openBankEntryModal(acctId){
+    var a = bank.accounts.find(function(x){ return x.id===acctId; });
+    var root = document.getElementById('modal-root');
+    root.innerHTML = '<div class="overlay" id="wf-overlay"><div class="modal"><h3>'+esc(a.name)+' — new entry</h3><div class="modal-sub">Amounts in '+esc(a.currency)+'.</div>'+
+      '<form id="bank-entry-form"><div class="seg" id="bank-dir" style="margin-bottom:14px;"><button type="button" class="active" data-dir="in">Money in</button><button type="button" data-dir="out">Money out</button></div>'+
+      '<div class="wf-grid2"><div class="field"><label>Amount</label><input type="number" step="0.01" id="be-amount" required></div><div class="field"><label>Date</label><input type="date" id="be-date" value="'+todayISO()+'"></div></div>'+
+      '<div class="field"><label>Description</label><input id="be-desc" placeholder="e.g. Transfer from customer 561, NASA payment"></div>'+
+      '<div class="field"><label>Reference (optional)</label><input id="be-ref"></div>'+
+      '<div class="modal-actions"><button type="button" class="btn ghost" id="be-cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div></form></div></div>';
+    var dir = 'in';
+    document.getElementById('bank-dir').addEventListener('click', function(e){ var b = e.target.closest('button[data-dir]'); if(!b) return; dir = b.dataset.dir; this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('active', x===b); }); });
+    document.getElementById('be-cancel').addEventListener('click', closeModal);
+    document.getElementById('bank-entry-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var amt = Math.abs(parseFloat(document.getElementById('be-amount').value)||0);
+      if(!amt){ toast('Enter an amount.', true); return; }
+      bank.tx.push({ id:uid(), bankId:acctId, date:document.getElementById('be-date').value||todayISO(), amount: dir==='in'?amt:-amt,
+        description:document.getElementById('be-desc').value.trim(), ref:document.getElementById('be-ref').value.trim(), source:'manual', seq:Date.now() });
+      closeModal(); renderBanks(); saveBank('Entry saved.');
+    });
+  }
+  function openBankAccountModal(acctId){
+    var a = acctId ? bank.accounts.find(function(x){ return x.id===acctId; }) : { id:'bank_'+uid(), name:'', currency:'ILS', opening:0 };
+    var isNew = !acctId;
+    var root = document.getElementById('modal-root');
+    root.innerHTML = '<div class="overlay" id="wf-overlay"><div class="modal"><h3>'+(isNew?'New bank account':esc(a.name)+' — settings')+'</h3><div class="modal-sub">The opening balance is the balance before the first entry you record here.</div>'+
+      '<form id="bank-acct-form"><div class="wf-grid2"><div class="field"><label>Name</label><input id="ba-name" value="'+esc(a.name)+'" required></div><div class="field"><label>Currency</label><input id="ba-cur" value="'+esc(a.currency)+'" placeholder="ILS, RMB, USD…"></div>'+
+      '<div class="field"><label>Opening balance</label><input type="number" step="0.01" id="ba-open" value="'+esc(a.opening||0)+'"></div></div>'+
+      '<div class="modal-actions"><button type="button" class="btn ghost" id="ba-cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div></form></div></div>';
+    document.getElementById('ba-cancel').addEventListener('click', closeModal);
+    document.getElementById('bank-acct-form').addEventListener('submit', function(e){
+      e.preventDefault();
+      var rec = { id:a.id, name:document.getElementById('ba-name').value.trim(), currency:document.getElementById('ba-cur').value.trim()||'ILS', opening:parseFloat(document.getElementById('ba-open').value)||0 };
+      if(!rec.name){ toast('Enter a name.', true); return; }
+      if(isNew) bank.accounts.push(rec); else bank.accounts = bank.accounts.map(function(x){ return x.id===rec.id ? rec : x; });
+      closeModal(); renderBanks(); saveBank('Bank account saved.');
+    });
+  }
+  // Statement upload: any Excel/CSV export. You pick which columns hold the
+  // date, description and amount (or separate debit/credit columns) once;
+  // the choice is remembered per bank account. Rows already imported (same
+  // date + amount + description) are skipped, so re-uploading is safe.
+  function parseAnyDate(v, monthFirst){
+    if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+String(v.getMonth()+1).padStart(2,'0')+'-'+String(v.getDate()).padStart(2,'0');
+    if(typeof v === 'number' && v > 20000 && v < 80000){ var d = XLSX.SSF.parse_date_code(v); if(d) return d.y+'-'+String(d.m).padStart(2,'0')+'-'+String(d.d).padStart(2,'0'); }
+    var s = String(v||'').trim(); var m;
+    if((m = s.match(/^(\d{4})[-\/.](\d{1,2})[-\/.](\d{1,2})/))) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+    if((m = s.match(/^(\d{1,2})[-\/.](\d{1,2})[-\/.](\d{2,4})/))){ var y = m[3].length===2 ? '20'+m[3] : m[3]; var dd = monthFirst ? m[2] : m[1], mm = monthFirst ? m[1] : m[2]; return y+'-'+mm.padStart(2,'0')+'-'+dd.padStart(2,'0'); }
+    return '';
+  }
+  function parseAmount(v){ if(typeof v==='number') return v; var s = String(v||'').replace(/[^\d.,\-()]/g,''); var neg = /^\(.*\)$/.test(s) || /^-/.test(s); s = s.replace(/[()\-]/g,'').replace(/,/g,''); var n = parseFloat(s); return isNaN(n) ? 0 : (neg ? -n : n); }
+  function openBankImportModal(acctId){
+    var a = bank.accounts.find(function(x){ return x.id===acctId; });
+    var root = document.getElementById('modal-root');
+    root.innerHTML = '<div class="overlay" id="wf-overlay"><div class="modal wf-modal"><h3>'+esc(a.name)+' — upload statement</h3><div class="modal-sub">Excel (.xlsx/.xls) or CSV exported from the bank\'s website.</div>'+
+      '<div class="field"><input type="file" id="bi-file" accept=".xlsx,.xls,.csv"></div><div id="bi-step2"></div>'+
+      '<div class="modal-actions"><button type="button" class="btn ghost" id="bi-cancel">Cancel</button></div></div></div>';
+    document.getElementById('bi-cancel').addEventListener('click', closeModal);
+    document.getElementById('bi-file').addEventListener('change', function(e){
+      var f = e.target.files[0]; if(!f) return;
+      var reader = new FileReader();
+      reader.onload = function(){
+        var wb;
+        var isCsv = /\.csv$/i.test(f.name);
+        // CSV: keep every cell as typed text (no guessing of US-style dates);
+        // Excel: real date cells come through as dates.
+        try { wb = XLSX.read(new Uint8Array(reader.result), isCsv ? { type:'array', raw:true } : { type:'array', cellDates:true }); } catch(err){ toast('Could not read that file.', true); return; }
+        var rows = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { header:1, defval:'', raw:true });
+        // header row = first row with at least 3 non-empty text cells
+        var hi = rows.findIndex(function(r){ return r.filter(function(c){ return typeof c==='string' && c.trim(); }).length >= 3; });
+        if(hi < 0) hi = 0;
+        var header = rows[hi].map(function(h,i){ return String(h||'').trim() || ('Column '+(i+1)); });
+        var data = rows.slice(hi+1).filter(function(r){ return r.some(function(c){ return c!=='' && c!=null; }); });
+        var saved = a.importMap || {};
+        function guess(words){ var i = header.findIndex(function(h){ var l = h.toLowerCase(); return words.some(function(w){ return l.indexOf(w)>-1; }); }); return i; }
+        var map = {
+          date: saved.date!=null ? saved.date : guess(['date','תאריך','تاريخ','日期','交易日']),
+          desc: saved.desc!=null ? saved.desc : guess(['desc','details','narrat','particular','תיאור','פרטים','البيان','وصف','摘要','用途','备注']),
+          amount: saved.amount!=null ? saved.amount : guess(['amount','סכום','المبلغ','金额']),
+          debit: saved.debit!=null ? saved.debit : guess(['debit','withdraw','חובה','مدين','支出','借']),
+          credit: saved.credit!=null ? saved.credit : guess(['credit','deposit','זכות','دائن','收入','贷'])
+        };
+        function sel(id, cur, allowNone){ return '<select id="'+id+'" class="wf-select">'+(allowNone?'<option value="-1">— none —</option>':'')+header.map(function(h,i){ return '<option value="'+i+'" '+(i===cur?'selected':'')+'>'+esc(h)+'</option>'; }).join('')+'</select>'; }
+        document.getElementById('bi-step2').innerHTML =
+          '<div class="wf-grid2">'+
+            '<div class="field"><label>Date column</label>'+sel('bi-date', map.date)+'</div>'+
+            '<div class="field"><label>Description column</label>'+sel('bi-desc', map.desc, true)+'</div>'+
+            '<div class="field"><label>Amount column (+ in / − out)</label>'+sel('bi-amount', map.amount, true)+'</div>'+
+            '<div class="field"><label>…or Money-out column</label>'+sel('bi-debit', map.debit, true)+'</div>'+
+            '<div class="field"><label>…and Money-in column</label>'+sel('bi-credit', map.credit, true)+'</div>'+
+            '<div class="field"><label>Dates are written</label><select id="bi-df" class="wf-select"><option value="dm" '+(saved.monthFirst?'':'selected')+'>Day / Month / Year</option><option value="md" '+(saved.monthFirst?'selected':'')+'>Month / Day / Year</option></select></div>'+
+          '</div><div id="bi-preview" class="hint" style="font-size:12.5px; margin-bottom:8px;"></div>'+
+          '<button type="button" class="btn primary" id="bi-go">Import</button>';
+        function build(){
+          var m = { date:+document.getElementById('bi-date').value, desc:+document.getElementById('bi-desc').value, amount:+document.getElementById('bi-amount').value,
+            debit:+document.getElementById('bi-debit').value, credit:+document.getElementById('bi-credit').value, monthFirst: document.getElementById('bi-df').value==='md' };
+          var existing = {}; bank.tx.forEach(function(t){ if(t.bankId===acctId) existing[t.date+'|'+t.amount+'|'+(t.description||'')] = true; });
+          var out = [], skipped = 0, bad = 0;
+          data.forEach(function(r){
+            var d = parseAnyDate(r[m.date], m.monthFirst);
+            var amt = m.amount >= 0 ? parseAmount(r[m.amount]) : (parseAmount(m.credit>=0 ? r[m.credit] : 0) - Math.abs(parseAmount(m.debit>=0 ? r[m.debit] : 0)));
+            if(!d || !amt){ bad++; return; }
+            var desc = m.desc >= 0 ? String(r[m.desc]||'').trim() : '';
+            var k = d+'|'+amt+'|'+desc;
+            if(existing[k]){ skipped++; return; }
+            existing[k] = true;
+            out.push({ id:uid(), bankId:acctId, date:d, amount:Math.round(amt*100)/100, description:desc, ref:'', source:'import', seq:Date.now()+out.length });
+          });
+          return { m:m, out:out, skipped:skipped, bad:bad };
+        }
+        function preview(){
+          var b = build(), inn = b.out.filter(function(t){ return t.amount>0; }).reduce(function(s,t){ return s+t.amount; },0), outt = b.out.filter(function(t){ return t.amount<0; }).reduce(function(s,t){ return s+t.amount; },0);
+          document.getElementById('bi-preview').textContent = b.out.length+' new movements (in '+fmt(inn)+', out '+fmt(-outt)+')'+(b.skipped?' · '+b.skipped+' already imported, skipped':'')+(b.bad?' · '+b.bad+' rows without a date or amount ignored':'');
+        }
+        document.getElementById('bi-step2').addEventListener('change', preview); preview();
+        document.getElementById('bi-go').addEventListener('click', function(){
+          var b = build();
+          if(!b.out.length){ toast('Nothing new to import.', true); return; }
+          bank.tx = bank.tx.concat(b.out);
+          bank.accounts = bank.accounts.map(function(x){ return x.id===acctId ? Object.assign({}, x, { importMap:b.m }) : x; });
+          closeModal(); renderBanks(); saveBank(b.out.length+' movements imported.');
+        });
+      };
+      reader.readAsArrayBuffer(f);
+    });
+  }
+
+  // ---------- events for the whole module ----------
+  document.addEventListener('click', function(e){
+    var el;
+    if((el = e.target.closest('[data-wf-new]'))){
+      var k = el.dataset.wfNew;
+      if(k==='problem') openProblemModal(); else if(k==='agreement') openAgreementModal(); else if(k==='task') openTaskModal();
+      return;
+    }
+    if((el = e.target.closest('[data-wf-edit-problem]'))){ openProblemModal(el.dataset.wfEditProblem); return; }
+    if((el = e.target.closest('[data-wf-edit-agreement]'))){ openAgreementModal(el.dataset.wfEditAgreement); return; }
+    if((el = e.target.closest('[data-wf-edit-task]'))){ e.preventDefault(); openTaskModal(el.dataset.wfEditTask); return; }
+    if((el = e.target.closest('[data-pf]'))){ var pf = el.dataset.pf.split(':'); problemFilter[pf[0]] = pf.slice(1).join(':'); renderProblems(); return; }
+    if((el = e.target.closest('[data-tf]'))){ var tf = el.dataset.tf.split(':'); taskFilter[tf[0]] = tf.slice(1).join(':'); renderTasks(); return; }
+    if(ACCESS.full && bank){
+      if((el = e.target.closest('[data-bank-add]'))){ openBankEntryModal(el.dataset.bankAdd); return; }
+      if((el = e.target.closest('[data-bank-import]'))){ openBankImportModal(el.dataset.bankImport); return; }
+      if((el = e.target.closest('[data-bank-edit]'))){ openBankAccountModal(el.dataset.bankEdit); return; }
+      if((el = e.target.closest('[data-bank-newacct]'))){ openBankAccountModal(null); return; }
+      if((el = e.target.closest('[data-bank-del]'))){
+        var id = el.dataset.bankDel;
+        openConfirmModal('Remove this bank movement?', function(){ bank.tx = bank.tx.filter(function(t){ return t.id!==id; }); renderBanks(); saveBank('Movement removed.'); });
+        return;
+      }
+    }
+  });
+  document.addEventListener('change', function(e){
+    var cb = e.target.closest('[data-wf-task-toggle]');
+    if(!cb) return;
+    var t = state.tasks.find(function(x){ return x.id===cb.dataset.wfTaskToggle; });
+    if(!t) return;
+    if(!ACCESS.full && t.assignee!==me()) return;
+    t.done = cb.checked; t.doneAt = cb.checked ? todayISO() : '';
+    renderTasks(); persist(cb.checked ? 'Done ✓' : 'Marked as not done.');
+  });
+
+  // Bank-data backups, listed under the ledger backups on the Backups page.
+  function fillBankBackups(root){
+    var box = document.createElement('div');
+    box.className = 'section'; box.style.marginTop = '26px';
+    box.innerHTML = '<div class="section-head"><h2>Bank data backups</h2><span class="hint">Daily, kept 7 days</span></div><div class="table-wrap"><div class="empty" style="padding:14px;">Loading…</div></div>';
+    root.appendChild(box);
+    fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=like.'+BANK_BACKUP_PREFIX+'*&select=key,value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        var list = (rows||[]).map(function(r){ var v=null; try{ v=JSON.parse(r.value); }catch(e){} return v && v.bank ? { key:r.key, v:v } : null; }).filter(Boolean)
+          .sort(function(a,b){ return (b.v.savedAt||'').localeCompare(a.v.savedAt||''); });
+        var trs = list.map(function(b){ return '<tr><td>'+esc(fmtStamp(b.v.savedAt))+'</td><td class="num">'+(b.v.bank.tx||[]).length+' movements</td><td><button class="btn small" data-bank-restore="'+esc(b.key)+'">Restore</button></td></tr>'; }).join('');
+        box.querySelector('.table-wrap').innerHTML = '<table><thead><tr><th>Saved</th><th class="num">Content</th><th></th></tr></thead><tbody>'+(trs||'<tr><td colspan="3" class="empty">No bank backups yet — made automatically once bank data exists.</td></tr>')+'</tbody></table>';
+        box.addEventListener('click', function(e){
+          var btn = e.target.closest('[data-bank-restore]'); if(!btn) return;
+          var b = list.find(function(x){ return x.key===btn.dataset.bankRestore; }); if(!b) return;
+          openConfirmModal('Replace ALL bank data with the copy saved '+fmtStamp(b.v.savedAt)+'?', function(){
+            fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+BANK_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+              .then(function(r){ return r.ok ? r.json() : []; })
+              .then(function(rows){ return rows && rows[0] ? sbWriteSetting(BANK_BACKUP_PREFIX+'before_restore', { date:localDateISO(), savedAt:new Date().toISOString(), reason:'Before restore', bank: JSON.parse(rows[0].value) }) : {ok:true}; })
+              .then(function(r1){ if(!r1.ok) throw new Error(r1.detail); return sbWriteSetting(BANK_KEY, b.v.bank); })
+              .then(function(r2){ if(!r2.ok) throw new Error(r2.detail); bank = deepCopy(b.v.bank); bankBaseline = deepCopy(bank); toast('Bank data restored.'); renderBackups(); })
+              .catch(function(err){ toast('Restore failed — '+err.message, true); });
+          }, 'Restore');
+        });
+      })
+      .catch(function(e){ box.querySelector('.table-wrap').innerHTML = '<div class="empty" style="padding:14px;">Could not load bank backups ('+esc(e.message)+').</div>'; });
+  }
+
+
+  // =====================================================================
+  // DATES AS DD/MM/YYYY
+  // A native <input type="date"> shows MM/DD/YYYY or DD/MM/YYYY depending
+  // on the computer's language settings, and a page can't change that. So
+  // every date field is turned into a text field that always shows and
+  // accepts DD/MM/YYYY, with a 📅 button that still opens the calendar.
+  // The rest of the code keeps reading/writing ISO (yyyy-mm-dd) through
+  // .value, exactly as before.
+  // =====================================================================
+  var NATIVE_VALUE = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+  function isoToDMY(iso){ var m = String(iso||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); return m ? m[3]+'/'+m[2]+'/'+m[1] : ''; }
+  function dmyToISO(s){
+    s = String(s||'').trim(); if(!s) return '';
+    var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
+    m = s.match(/^(\d{1,2})[\/.\-\\ ](\d{1,2})[\/.\-\\ ](\d{2}|\d{4})$/);
+    if(!m) return '';
+    var d = +m[1], mo = +m[2], y = m[3].length===2 ? 2000 + +m[3] : +m[3];
+    if(mo<1 || mo>12 || d<1 || d>31) return '';
+    var dt = new Date(Date.UTC(y, mo-1, d));
+    if(dt.getUTCMonth() !== mo-1) return ''; // e.g. 31/02
+    return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  }
+  function enhanceDateInput(el){
+    if(el.dataset.dmy) return;
+    el.dataset.dmy = '1';
+    var iso = NATIVE_VALUE.get.call(el);
+    el.type = 'text';
+    el.setAttribute('placeholder', 'DD/MM/YYYY');
+    el.setAttribute('inputmode', 'numeric');
+    el.setAttribute('autocomplete', 'off');
+    el.style.paddingRight = '34px';
+    if(!el.closest('.field')) el.style.width = el.style.width || '140px';
+    Object.defineProperty(el, 'value', {
+      configurable: true,
+      get: function(){ return dmyToISO(NATIVE_VALUE.get.call(this)); },
+      set: function(v){ var s = String(v||''); NATIVE_VALUE.set.call(this, /^\d{4}-\d{2}-\d{2}$/.test(s) ? isoToDMY(s) : s); }
+    });
+    NATIVE_VALUE.set.call(el, isoToDMY(iso));
+    // tidy what was typed (e.g. 5.1.26 -> 05/01/2026) and flag nonsense
+    el.addEventListener('blur', function(){
+      var raw = NATIVE_VALUE.get.call(el).trim(), iso2 = dmyToISO(raw);
+      if(iso2) NATIVE_VALUE.set.call(el, isoToDMY(iso2));
+      el.style.borderColor = (raw && !iso2) ? 'var(--danger)' : '';
+    });
+    // calendar button: a hidden native picker that writes back into this field
+    var wrap = document.createElement('span');
+    wrap.className = 'dmy-wrap';
+    el.parentNode.insertBefore(wrap, el);
+    wrap.appendChild(el);
+    var btn = document.createElement('button');
+    btn.type = 'button'; btn.className = 'dmy-cal'; btn.title = 'Pick a date'; btn.textContent = '📅';
+    var picker = document.createElement('input');
+    picker.type = 'date'; picker.tabIndex = -1; picker.className = 'dmy-picker';
+    wrap.appendChild(btn); wrap.appendChild(picker);
+    btn.addEventListener('click', function(){
+      NATIVE_VALUE.set.call(picker, el.value || todayISO());
+      try { picker.showPicker(); } catch(e){ picker.focus(); picker.click(); }
+    });
+    picker.addEventListener('change', function(){
+      el.value = NATIVE_VALUE.get.call(picker);
+      el.style.borderColor = '';
+      el.dispatchEvent(new Event('input', { bubbles:true }));
+      el.dispatchEvent(new Event('change', { bubbles:true }));
+    });
+  }
+  function enhanceAllDateInputs(root){
+    (root || document).querySelectorAll('input[type="date"]:not(.dmy-picker)').forEach(enhanceDateInput);
+  }
+  new MutationObserver(function(){ try { enhanceAllDateInputs(document); } catch(e){} }).observe(document.body, { childList:true, subtree:true });
+  enhanceAllDateInputs(document);
+
+  // =====================================================================
+  // MY MONEY — private log of money you give, spend, invest, lend, and
+  // money that comes back. Full-access user only; kept in its own cloud
+  // row (ledger_private_data), merge-safe saves, daily backups for 7 days.
+  // =====================================================================
+  var PRIV_KEY = 'ledger_private_data', PRIV_BACKUP_PREFIX = 'ledger_private_backup_';
+  var PRIV_CATEGORIES = ['Investment','Loan','Business expense','Personal','Family','Gift','Salary / payment','Other'];
+  var priv = null, privBaseline = null, privLoading = null;
+  var privFilter = { person:'all', project:'all', category:'all', dir:'all', currency:'all', from:'', to:'' };
+  function loadPriv(){
+    if(privLoading) return privLoading;
+    privLoading = fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+PRIV_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        priv = rows && rows[0] ? JSON.parse(rows[0].value) : { entries:[] };
+        priv.entries = priv.entries || [];
+        privBaseline = deepCopy(priv);
+        if(rows && rows[0]) ensureDailyPrivBackup(priv);
+        return priv;
+      })
+      .catch(function(e){ privLoading = null; throw e; });
+    return privLoading;
+  }
+  var privBackupDoneFor = null;
+  function ensureDailyPrivBackup(cloudPriv){
+    var today = localDateISO();
+    if(!cloudPriv || privBackupDoneFor===today) return;
+    var dayNo = Math.floor(Date.parse(today+'T00:00:00Z')/86400000), key = PRIV_BACKUP_PREFIX+'day'+(dayNo % BACKUP_DAYS);
+    fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+key+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ return r.ok ? r.json() : []; })
+      .then(function(rows){
+        var ex = null; try { ex = rows && rows[0] ? JSON.parse(rows[0].value) : null; } catch(e){}
+        if(ex && ex.date===today){ privBackupDoneFor = today; return; }
+        return sbWriteSetting(key, { date:today, savedAt:new Date().toISOString(), reason:'Automatic daily backup — My Money', priv: cloudPriv }).then(function(res){ if(res.ok) privBackupDoneFor = today; });
+      }).catch(function(){});
+  }
+  function savePriv(msg){
+    return fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+PRIV_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        var cloud = rows && rows[0] ? JSON.parse(rows[0].value) : null;
+        if(cloud) ensureDailyPrivBackup(cloud);
+        var merged = cloud ? mergeLedgerStates(privBaseline, priv, cloud) : priv;
+        return sbWriteSetting(PRIV_KEY, merged).then(function(res){
+          if(!res.ok) throw new Error(res.detail);
+          priv = merged; privBaseline = deepCopy(merged);
+          if(msg) toast(msg);
+          if(currentView==='mymoney') renderMyMoney();
+        });
+      })
+      .catch(function(e){ toast('NOT saved — '+e.message+'. Nothing was overwritten; try again.', true); });
+  }
+  function uniqSorted(arr){ var o = {}; arr.forEach(function(v){ v = String(v||'').trim(); if(v) o[v] = true; }); return Object.keys(o).sort(function(a,b){ return a.localeCompare(b); }); }
+  function privMatches(e){
+    var f = privFilter;
+    if(f.person!=='all' && e.person!==f.person) return false;
+    if(f.project!=='all' && (e.project||'')!==f.project) return false;
+    if(f.category!=='all' && e.category!==f.category) return false;
+    if(f.dir!=='all' && e.dir!==f.dir) return false;
+    if(f.currency!=='all' && (e.currency||'ILS')!==f.currency) return false;
+    if(f.from && (e.date||'') < f.from) return false;
+    if(f.to && (e.date||'') > f.to) return false;
+    if(searchTerm && (e.person+' '+(e.project||'')+' '+(e.purpose||'')+' '+(e.note||'')+' '+(e.category||'')).toLowerCase().indexOf(searchTerm)===-1) return false;
+    return true;
+  }
+  function renderMyMoney(){
+    var root = document.getElementById('view-mymoney');
+    if(!ACCESS.full){ root.innerHTML = '<div class="empty">Not available for your account.</div>'; return; }
+    if(!priv){
+      root.innerHTML = '<div class="empty">Loading…</div>';
+      loadPriv().then(function(){ if(currentView==='mymoney') renderMyMoney(); }, function(e){ root.innerHTML = '<div class="empty">Could not load ('+esc(e.message)+'). Reload to try again.</div>'; });
+      return;
+    }
+    var all = priv.entries;
+    var list = all.filter(privMatches).sort(function(a,b){ return (b.date||'').localeCompare(a.date||'') || (b.seq||0)-(a.seq||0); });
+    // totals per currency (never mix currencies in one number)
+    var byCur = {};
+    list.forEach(function(e){ var c = e.currency||'ILS'; var t = byCur[c] = byCur[c] || { out:0, back:0 }; if(e.dir==='in') t.back += +e.amount||0; else t.out += +e.amount||0; });
+    var curKeys = Object.keys(byCur).sort();
+    var cards = curKeys.length ? curKeys.map(function(c){
+      var t = byCur[c];
+      return '<div class="card"><div class="card-label">'+esc(c)+' · given / spent</div><div class="card-value">'+fmt(t.out)+'</div>'+
+        '<div class="card-sub">Came back '+fmt(t.back)+' · <b>net out '+fmt(t.out - t.back)+'</b></div></div>';
+    }).join('') : '<div class="card"><div class="card-label">Nothing logged'+(all.length?' for this filter':' yet')+'</div><div class="card-value">0</div><div class="card-sub">Use “+ New entry”</div></div>';
+    // breakdown tables: by person, by project
+    function breakdown(field, label){
+      var g = {};
+      list.forEach(function(e){
+        var k = String(e[field]||'').trim() || '—', c = e.currency||'ILS';
+        var x = g[k] = g[k] || {}; var t = x[c] = x[c] || { out:0, back:0, n:0 };
+        if(e.dir==='in') t.back += +e.amount||0; else t.out += +e.amount||0; t.n++;
+      });
+      var rows = [];
+      Object.keys(g).forEach(function(k){ Object.keys(g[k]).forEach(function(c){ var t = g[k][c]; rows.push({ k:k, c:c, out:t.out, back:t.back, n:t.n }); }); });
+      rows.sort(function(a,b){ return (b.out-b.back) - (a.out-a.back); });
+      if(!rows.length) return '';
+      return '<div class="wf-card"><div class="wf-label" style="font-size:13px;">By '+label+'</div><table class="wf-mini"><thead><tr><th>'+label+'</th><th class="num">Given</th><th class="num">Back</th><th class="num">Net</th></tr></thead><tbody>'+
+        rows.slice(0,25).map(function(r){ return '<tr><td><a href="#" data-priv-pick="'+field+':'+esc(r.k)+'">'+esc(r.k)+'</a> <span class="muted">'+esc(r.c)+' · '+r.n+'×</span></td><td class="num">'+fmt(r.out)+'</td><td class="num">'+fmt(r.back)+'</td><td class="num" style="font-weight:700;">'+fmt(r.out - r.back)+'</td></tr>'; }).join('')+
+        '</tbody></table></div>';
+    }
+    function sel(name, label, opts){
+      return '<label class="mm-f">'+label+'<select data-priv-f="'+name+'" class="wf-select"><option value="all">All</option>'+opts.map(function(o){ var v = Array.isArray(o)?o[0]:o, t = Array.isArray(o)?o[1]:o; return '<option value="'+esc(v)+'" '+(privFilter[name]===v?'selected':'')+'>'+esc(t)+'</option>'; }).join('')+'</select></label>';
+    }
+    var filtersOn = Object.keys(privFilter).some(function(k){ return privFilter[k] && privFilter[k]!=='all'; });
+    var filters = '<div class="mm-filters">'+
+      sel('person','Person', uniqSorted(all.map(function(e){ return e.person; })))+
+      sel('project','Project', uniqSorted(all.map(function(e){ return e.project; })))+
+      sel('category','Category', uniqSorted(PRIV_CATEGORIES.concat(all.map(function(e){ return e.category; }))))+
+      sel('dir','Direction', [['out','Given / spent'],['in','Came back']])+
+      sel('currency','Currency', uniqSorted(all.map(function(e){ return e.currency||'ILS'; })))+
+      '<label class="mm-f">From<input type="date" data-priv-f="from" value="'+esc(privFilter.from)+'"></label>'+
+      '<label class="mm-f">To<input type="date" data-priv-f="to" value="'+esc(privFilter.to)+'"></label>'+
+      (filtersOn ? '<button class="btn small ghost" data-priv-clear>Clear filters</button>' : '')+
+      '<span style="flex:1"></span><button class="btn primary" data-priv-new>+ New entry</button></div>';
+    var rows = list.slice(0,500).map(function(e){
+      return '<tr><td>'+fmtDate(e.date)+'</td>'+
+        '<td><b>'+esc(e.person)+'</b></td>'+
+        '<td>'+esc(e.project||'—')+'</td>'+
+        '<td>'+esc(e.purpose||'')+(e.note?'<div class="wf-cellnote">'+esc(e.note)+'</div>':'')+'</td>'+
+        '<td><span class="pill">'+esc(e.category||'Other')+'</span>'+(e.method?' <span class="muted" style="font-size:11.5px;">'+esc(PAYMENT_METHODS[e.method]||e.method)+'</span>':'')+'</td>'+
+        '<td class="num" style="color:'+(e.dir==='in'?'var(--good)':'var(--ink)')+'; white-space:nowrap;">'+(e.dir==='in'?'+ ':'− ')+fmt(e.amount)+' <span class="muted" style="font-size:11px;">'+esc(e.currency||'ILS')+'</span></td>'+
+        '<td><button class="btn small ghost" data-priv-edit="'+e.id+'">Edit</button></td></tr>';
+    }).join('');
+    root.innerHTML =
+      '<div class="grid-cards">'+cards+'</div>'+
+      filters+
+      '<div class="wf-cards" style="margin-bottom:22px;">'+breakdown('person','person')+breakdown('project','project')+breakdown('category','category')+'</div>'+
+      '<div class="table-wrap"><table><thead><tr><th>Date</th><th>To / from</th><th>Project</th><th>What for</th><th>Category</th><th class="num">Amount</th><th></th></tr></thead><tbody>'+
+        (rows || '<tr><td colspan="7" class="empty">'+(all.length?'Nothing matches these filters.':'No entries yet — use “+ New entry”.')+'</td></tr>')+'</tbody></table></div>'+
+      (list.length>500?'<div class="hint" style="margin-top:6px;">Showing the latest 500 — narrow the filters to see older ones.</div>':'');
+  }
+  function openPrivModal(id){
+    var e = id ? priv.entries.find(function(x){ return x.id===id; }) : null;
+    var isNew = !e;
+    var last = priv.entries.slice().sort(function(a,b){ return (b.seq||0)-(a.seq||0); })[0];
+    e = e ? JSON.parse(JSON.stringify(e)) : { id:uid(), dir:'out', date:todayISO(), person:'', project:'', purpose:'', category:'Investment', amount:'', currency:(last&&last.currency)||'ILS', method:'bank', note:'' };
+    var people = uniqSorted(priv.entries.map(function(x){ return x.person; })), projects = uniqSorted(priv.entries.map(function(x){ return x.project; }));
+    var currencies = uniqSorted(['ILS','USD','RMB','RUB','EUR','JOD'].concat(priv.entries.map(function(x){ return x.currency; })));
+    var root = document.getElementById('modal-root');
+    root.innerHTML = '<div class="overlay" id="wf-overlay"><div class="modal wf-modal"><h3>'+(isNew?'New entry':'Edit entry')+'</h3><div class="modal-sub">Private — only you see this.</div>'+
+      '<form id="priv-form">'+
+        '<div class="seg" id="pm-dir" style="margin-bottom:14px;"><button type="button" data-dir="out" class="'+(e.dir!=='in'?'active':'')+'">I gave / spent</button><button type="button" data-dir="in" class="'+(e.dir==='in'?'active':'')+'">Came back to me</button></div>'+
+        '<div class="wf-grid2">'+
+          '<div class="field"><label>To / from whom</label><input id="pm-person" list="pm-people" value="'+esc(e.person)+'" placeholder="e.g. Anthon" required><datalist id="pm-people">'+people.map(function(p){ return '<option value="'+esc(p)+'">'; }).join('')+'</datalist></div>'+
+          '<div class="field"><label>Project / business</label><input id="pm-project" list="pm-projects" value="'+esc(e.project||'')+'" placeholder="e.g. Russian business"><datalist id="pm-projects">'+projects.map(function(p){ return '<option value="'+esc(p)+'">'; }).join('')+'</datalist></div>'+
+          '<div class="field"><label>Amount</label><input type="number" step="0.01" min="0" id="pm-amount" value="'+esc(e.amount)+'" required></div>'+
+          '<div class="field"><label>Currency</label><input id="pm-cur" list="pm-curs" value="'+esc(e.currency||'ILS')+'"><datalist id="pm-curs">'+currencies.map(function(c){ return '<option value="'+esc(c)+'">'; }).join('')+'</datalist></div>'+
+          '<div class="field"><label>Date</label><input type="date" id="pm-date" value="'+esc(e.date||todayISO())+'"></div>'+
+          '<div class="field"><label>Category</label><select id="pm-cat">'+uniqSorted(PRIV_CATEGORIES.concat([e.category])).map(function(c){ return '<option '+(c===e.category?'selected':'')+'>'+esc(c)+'</option>'; }).join('')+'</select></div>'+
+          '<div class="field"><label>How</label><select id="pm-method">'+Object.keys(PAYMENT_METHODS).map(function(k){ return '<option value="'+k+'" '+(k===e.method?'selected':'')+'>'+PAYMENT_METHODS[k]+'</option>'; }).join('')+'</select></div>'+
+        '</div>'+
+        '<div class="field"><label>What for</label><input id="pm-purpose" value="'+esc(e.purpose||'')+'" placeholder="e.g. stock purchase, office rent, share of investment"></div>'+
+        '<div class="field"><label>Note (optional)</label><textarea id="pm-note" rows="2">'+esc(e.note||'')+'</textarea></div>'+
+        '<div class="modal-actions">'+(isNew?'':'<button type="button" class="btn ghost danger" id="pm-delete">Delete</button>')+'<span style="flex:1"></span>'+
+          '<button type="button" class="btn ghost" id="pm-cancel">Cancel</button><button type="submit" class="btn primary">Save</button></div>'+
+      '</form></div></div>';
+    var dir = e.dir==='in' ? 'in' : 'out';
+    document.getElementById('pm-dir').addEventListener('click', function(ev){ var b = ev.target.closest('button[data-dir]'); if(!b) return; dir = b.dataset.dir; this.querySelectorAll('button').forEach(function(x){ x.classList.toggle('active', x===b); }); });
+    document.getElementById('pm-cancel').addEventListener('click', closeModal);
+    document.getElementById('wf-overlay').addEventListener('click', function(ev){ if(ev.target.id==='wf-overlay') closeModal(); });
+    if(!isNew) document.getElementById('pm-delete').addEventListener('click', function(){
+      openConfirmModal('Delete this entry ('+e.person+', '+fmt(e.amount)+' '+(e.currency||'')+')?', function(){ priv.entries = priv.entries.filter(function(x){ return x.id!==e.id; }); renderMyMoney(); savePriv('Entry deleted.'); });
+    });
+    document.getElementById('priv-form').addEventListener('submit', function(ev){
+      ev.preventDefault();
+      var rec = Object.assign({}, e, {
+        dir:dir, person:document.getElementById('pm-person').value.trim(), project:document.getElementById('pm-project').value.trim(),
+        amount:Math.abs(parseFloat(document.getElementById('pm-amount').value)||0), currency:(document.getElementById('pm-cur').value.trim()||'ILS').toUpperCase(),
+        date:document.getElementById('pm-date').value || todayISO(), category:document.getElementById('pm-cat').value, method:document.getElementById('pm-method').value,
+        purpose:document.getElementById('pm-purpose').value.trim(), note:document.getElementById('pm-note').value.trim()
+      });
+      if(!rec.person){ toast('Write who it went to / came from.', true); return; }
+      if(!rec.amount){ toast('Enter the amount.', true); return; }
+      if(isNew){ rec.seq = Date.now(); priv.entries.push(rec); } else priv.entries = priv.entries.map(function(x){ return x.id===rec.id ? rec : x; });
+      closeModal(); renderMyMoney(); savePriv(isNew ? 'Saved.' : 'Entry updated.');
+    });
+  }
+  document.addEventListener('click', function(ev){
+    if(!ACCESS.full || !priv) return;
+    var el;
+    if((el = ev.target.closest('[data-priv-new]'))){ openPrivModal(null); return; }
+    if((el = ev.target.closest('[data-priv-edit]'))){ openPrivModal(el.dataset.privEdit); return; }
+    if((el = ev.target.closest('[data-priv-clear]'))){ privFilter = { person:'all', project:'all', category:'all', dir:'all', currency:'all', from:'', to:'' }; renderMyMoney(); return; }
+    if((el = ev.target.closest('[data-priv-pick]'))){ ev.preventDefault(); var p = el.dataset.privPick.split(':'); var f = p.shift(), v = p.join(':'); if(v!=='—'){ privFilter[f] = v; renderMyMoney(); } return; }
+  });
+  document.addEventListener('change', function(ev){
+    var el = ev.target.closest('[data-priv-f]');
+    if(!el || currentView!=='mymoney') return;
+    privFilter[el.dataset.privF] = el.value || (el.tagName==='SELECT' ? 'all' : '');
+    renderMyMoney();
+  });
+  // My Money backups, listed on the Backups page (same pattern as bank data).
+  function fillPrivBackups(root){
+    var box = document.createElement('div');
+    box.className = 'section'; box.style.marginTop = '26px';
+    box.innerHTML = '<div class="section-head"><h2>My Money backups</h2><span class="hint">Daily, kept 7 days</span></div><div class="table-wrap"><div class="empty" style="padding:14px;">Loading…</div></div>';
+    root.appendChild(box);
+    fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=like.'+PRIV_BACKUP_PREFIX+'*&select=key,value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(r){ if(!r.ok) throw new Error('HTTP '+r.status); return r.json(); })
+      .then(function(rows){
+        var list = (rows||[]).map(function(r){ var v=null; try{ v=JSON.parse(r.value); }catch(e){} return v && v.priv ? { key:r.key, v:v } : null; }).filter(Boolean)
+          .sort(function(a,b){ return (b.v.savedAt||'').localeCompare(a.v.savedAt||''); });
+        box.querySelector('.table-wrap').innerHTML = '<table><thead><tr><th>Saved</th><th class="num">Content</th><th></th></tr></thead><tbody>'+
+          (list.map(function(b){ return '<tr><td>'+esc(fmtStamp(b.v.savedAt))+'</td><td class="num">'+(b.v.priv.entries||[]).length+' entries</td><td><button class="btn small" data-priv-restore="'+esc(b.key)+'">Restore</button></td></tr>'; }).join('')
+            || '<tr><td colspan="3" class="empty">No backups yet — made automatically once entries exist.</td></tr>')+'</tbody></table>';
+        box.addEventListener('click', function(e){
+          var btn = e.target.closest('[data-priv-restore]'); if(!btn) return;
+          var b = list.find(function(x){ return x.key===btn.dataset.privRestore; }); if(!b) return;
+          openConfirmModal('Replace ALL My Money entries with the copy saved '+fmtStamp(b.v.savedAt)+'?', function(){
+            fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.'+PRIV_KEY+'&select=value', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+              .then(function(r){ return r.ok ? r.json() : []; })
+              .then(function(rows){ return rows && rows[0] ? sbWriteSetting(PRIV_BACKUP_PREFIX+'before_restore', { date:localDateISO(), savedAt:new Date().toISOString(), reason:'Before restore', priv: JSON.parse(rows[0].value) }) : {ok:true}; })
+              .then(function(r1){ if(!r1.ok) throw new Error(r1.detail); return sbWriteSetting(PRIV_KEY, b.v.priv); })
+              .then(function(r2){ if(!r2.ok) throw new Error(r2.detail); priv = deepCopy(b.v.priv); privBaseline = deepCopy(priv); toast('My Money restored.'); renderBackups(); })
+              .catch(function(err){ toast('Restore failed — '+err.message, true); });
+          }, 'Restore');
+        });
+      })
+      .catch(function(e){ box.querySelector('.table-wrap').innerHTML = '<div class="empty" style="padding:14px;">Could not load ('+esc(e.message)+').</div>'; });
+  }
+
+
+  // =====================================================================
+  // RELEASED BUT NOT INVOICED — files picked up from the port more than
+  // LATE_INVOICE_DAYS ago that still have no invoice date. Shown on the
+  // Overview with a ready-to-send request per agent, and as a red count
+  // next to each agent under "Not Finish File".
+  // =====================================================================
+  var LATE_INVOICE_DAYS = 30;
+  function daysBetween(fromISO, toISO){ return Math.round((Date.parse(toISO+'T00:00:00Z') - Date.parse(fromISO+'T00:00:00Z'))/86400000); }
+  function lateInvoiceFiles(){
+    var today = todayISO();
+    return notFinished.filter(function(s){
+      if(!canSeeAccount(s.account)) return false;
+      var rel = state.releaseDates[s.id];
+      return rel && daysBetween(rel, today) > LATE_INVOICE_DAYS;
+    }).map(function(s){ return { s:s, rel:state.releaseDates[s.id], days:daysBetween(state.releaseDates[s.id], todayISO()) }; })
+      .sort(function(a,b){ return b.days - a.days; });
+  }
+  function lateInvoiceMessage(account, items){
+    var lines = items.map(function(x, i){
+      var cont = String(x.s.containerNumber||'').split(',').map(function(c){ return c.trim(); }).filter(Boolean).join(', ');
+      return (i+1)+'. File '+(x.s.fileNumber||'—')+' — container '+(cont||'—')+' — released '+fmtDate(x.rel).replace(/ /g,' ');
+    });
+    return 'Hello,\n\nThe following file'+(items.length>1?'s were':' was')+' released more than a month ago and we still have not received '+(items.length>1?'their invoices':'its invoice')+' ('+account+' account):\n\n'+
+      lines.join('\n')+'\n\nPlease send '+(items.length>1?'the invoices':'the invoice')+' as soon as possible.\nThank you.';
+  }
+  function lateInvoiceHTML(){
+    var late = lateInvoiceFiles();
+    if(!late.length) return '';
+    var byAcct = {};
+    late.forEach(function(x){ (byAcct[x.s.account] = byAcct[x.s.account] || []).push(x); });
+    var blocks = Object.keys(byAcct).sort().map(function(a){
+      var items = byAcct[a];
+      var rows = items.map(function(x){
+        return '<tr><td><b>'+esc(x.s.fileNumber||'—')+'</b></td><td>'+esc(x.s.customer||'—')+'</td><td class="muted">'+esc(x.s.containerNumber)+'</td><td class="muted">'+esc(x.s.goods||'')+'</td>'+
+          '<td>'+fmtDate(x.rel)+'</td><td class="num row-neg">'+x.days+' days</td><td class="num">'+fmt((Number(x.s.paid)||0)+(Number(x.s.additionalCost)||0))+'</td></tr>';
+      }).join('');
+      return '<div style="margin-bottom:14px;"><div style="display:flex; align-items:center; gap:10px; margin:0 0 6px;"><b style="color:'+ACCOUNT_COLOR[a]+'">'+a+'</b>'+
+        '<span class="muted" style="font-size:12.5px;">'+items.length+' file'+(items.length>1?'s':'')+'</span><span style="flex:1"></span>'+
+        '<button class="btn small" data-late-copy="'+a+'">Copy request message</button></div>'+
+        '<div class="table-wrap"><table><thead><tr><th>File #</th><th>Customer</th><th>Container</th><th>Goods</th><th>Released</th><th class="num">Waiting</th><th class="num">Cost</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    }).join('');
+    return '<div class="section wf-alert"><div class="section-head"><h2>⚠ Released over a month ago — no invoice yet</h2><span class="hint">Ask NASA for these invoices — “Copy request message” gives you a ready text to send</span></div>'+blocks+'</div>';
+  }
+  function updateLateBadges(){
+    var late = lateInvoiceFiles(), n = {};
+    late.forEach(function(x){ n[x.s.account] = (n[x.s.account]||0) + 1; });
+    ACCOUNTS.forEach(function(a){
+      var btn = document.querySelector('#mainnav .navitem[data-view="notfinished-'+a+'"]');
+      if(!btn) return;
+      var b = btn.querySelector('.nav-badge');
+      if(n[a]){
+        if(!b){ b = document.createElement('span'); b.className = 'nav-badge'; btn.appendChild(b); }
+        b.textContent = n[a]; b.title = n[a]+' released over a month ago with no invoice';
+      } else if(b) b.remove();
+    });
+  }
+  document.addEventListener('click', function(e){
+    var el = e.target.closest('[data-late-copy]');
+    if(!el) return;
+    var a = el.dataset.lateCopy;
+    var items = lateInvoiceFiles().filter(function(x){ return x.s.account===a; });
+    var text = lateInvoiceMessage(a, items);
+    function fallback(){
+      var root = document.getElementById('modal-root');
+      root.innerHTML = '<div class="overlay" id="wf-overlay"><div class="modal wf-modal"><h3>Request message — '+esc(a)+'</h3><div class="modal-sub">Select all and copy.</div>'+
+        '<div class="field"><textarea id="late-text" rows="12">'+esc(text)+'</textarea></div><div class="modal-actions"><button class="btn primary" id="late-close">Done</button></div></div></div>';
+      document.getElementById('late-close').addEventListener('click', closeModal);
+      var ta = document.getElementById('late-text'); ta.focus(); ta.select();
+    }
+    try {
+      navigator.clipboard.writeText(text).then(function(){ toast('Message copied — paste it into WhatsApp / email.'); }, fallback);
+    } catch(err){ fallback(); }
   });
 
   // ---------- persistence ----------
@@ -2432,7 +3555,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       'notfinished-Michy':'Michy · Not Finish File', 'notfinished-Deia':'Deia · Not Finish File', 'notfinished-Ayman':'Ayman · Not Finish File',
       'extworker-Michy':'Michy · External Account', 'extworker-Deia':'Deia · External Account', 'extworker-Ayman':'Ayman · External Account',
       'officeexp-Michy':'Michy · Office Expenses', 'officeexp-Deia':'Deia · Office Expenses', 'officeexp-Ayman':'Ayman · Office Expenses',
-      customers:'Customers', paymentlog:'Payment Log', statement:'Customer Statement', backups:'Backups' };
+      customers:'Customers', paymentlog:'Payment Log', statement:'Customer Statement', backups:'Backups', problems:'Problems', agreements:'Agreements', tasks:'Tasks', banks:'Banks', mymoney:'My Money' };
     document.getElementById('pagetitle').textContent = titles[view] || view;
     var metas = {
       overview:'All three NASA accounts, combined',
@@ -2448,14 +3571,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       'officeexp-Deia':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
       'officeexp-Ayman':"Salary, water, electricity, taxes and other office costs — tracked separately, doesn't affect this account's profit/debt",
       statement:'Printable summary — use Print / Save as PDF below to export it',
-      backups:'A copy of all ledger money data is saved automatically every day and kept for 7 days — restore any of them here'
+      backups:'A copy of all ledger money data is saved automatically every day and kept for 7 days — restore any of them here',
+      problems:'Stuck or seized goods, port discounts awaiting, and settlements with customers — with remarks',
+      agreements:'Special prices and terms agreed with customers, written down once',
+      tasks:'Personal task lists — tick them off as you go',
+      banks:'China and Palestine bank accounts — balances and every movement (only you see this)',
+      mymoney:'Private — money you give, spend, invest or lend, and what comes back (only you see this)'
     };
     document.getElementById('pagemeta').textContent = metas[view] || 'Shipments, cost owed to NASA, and payments for this account';
     document.getElementById('globalsearch').placeholder = view==='paymentlog' ? 'Search payments by customer or agent…' : 'Search customer, container, file #…';
     // The global "+ Log Payment" button opens the customer/NASA payment modal —
     // it doesn't apply on the External Account or Office Expenses pages, which
     // have their own "+ Log" buttons instead.
-    document.getElementById('btn-log-payment').style.display = (view.indexOf('extworker-')===0 || view.indexOf('officeexp-')===0 || view==='backups') ? 'none' : '';
+    document.getElementById('btn-log-payment').style.display = (view.indexOf('extworker-')===0 || view.indexOf('officeexp-')===0 || view==='backups' || view==='banks' || view==='mymoney' || view==='tasks' || view==='agreements' || view==='problems') ? 'none' : '';
   }
 
   document.getElementById('mainnav').addEventListener('click', function(e){
@@ -2468,10 +3596,10 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   document.getElementById('globalsearch').addEventListener('input', function(e){
     searchTerm = e.target.value.trim().toLowerCase();
     pageState = {};
-    if(currentView === 'paymentlog'){
+    if(['paymentlog','problems','agreements','tasks','banks','mymoney'].indexOf(currentView) > -1){
       // On the Payment Log page, searching filters the payment entries themselves —
       // it should never jump away to the general shipments/customers search page.
-      renderView('paymentlog');
+      renderView(currentView);
     } else if(searchTerm){
       showSearchResults();
     } else {
@@ -2576,6 +3704,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }).join('') : '<div class="empty">No customers currently over their credit limit.</div>';
 
     root.innerHTML =
+      lateInvoiceHTML()+
       '<div class="grid-cards">'+
         '<div class="card"><div class="card-label">Combined Sold</div><div class="card-value">'+fmt(grandSold)+'</div><div class="card-sub">Across Michy, Deia &amp; Ayman</div></div>'+
         '<div class="card"><div class="card-label">Combined Cost (owed to NASA)</div><div class="card-value">'+fmt(grandTotalCost)+'</div><div class="card-sub">Paid '+fmt(grandPaid)+' + additional cost '+fmt(grandAddCost)+'</div></div>'+
@@ -2583,6 +3712,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '<div class="card"><div class="card-label">Total Debt to NASA</div><div class="card-value'+(grandDebt<0?' row-neg':'')+'">'+fmt(grandDebt)+'</div><div class="card-sub">Cost minus payments made to NASA</div></div>'+
       '</div>'+
       '<div class="grid-cards">'+cards+'</div>'+
+      weeklyMoneyHTML()+
       '<div class="section"><div class="section-head"><h2>Debt to NASA by account</h2></div><div class="table-wrap" style="padding:18px 20px;"><div class="bars">'+bars+'</div></div></div>'+
       '<div class="section"><div class="section-head"><h2>Customers over their credit limit</h2><span class="hint">balance / limit</span></div><div class="table-wrap" style="padding:6px 20px;"><div class="kv">'+overLimitHtml+'</div></div></div>';
   }
@@ -2686,6 +3816,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '<td class="num'+(s.additionalCost?' row-neg':'')+'">'+fmt(s.additionalCost)+'</td>'+
         '<td class="muted">'+esc(s.additionalCostReason||'—')+'</td>'+
         '<td class="muted">'+esc(s.fileNumber)+'</td>'+
+        (function(){
+          var rel = state.releaseDates[s.id] || '';
+          var since = rel ? daysBetween(rel, todayISO()) : (s.arrivalDate && s.arrivalDate <= todayISO() ? daysBetween(s.arrivalDate, todayISO()) : null);
+          var late = rel && since > LATE_INVOICE_DAYS;
+          return '<td>'+(rel ? fmtDate(rel) : '<span class="muted">not released</span>')+'</td>'+
+            '<td class="num'+(late?' row-neg':'')+'" title="'+(rel?'days since release':'days since arrival')+'">'+(since==null?'—':(since+'d'+(late?' ⚠':'')))+'</td>';
+        })()+
       '</tr>';
     }).join('');
 
@@ -2696,8 +3833,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '<div class="card"><div class="card-label">Cost (pending)</div><div class="card-value">'+fmt(paid+addCost)+'</div><div class="card-sub">Paid '+fmt(paid)+' + additional cost '+fmt(addCost)+'</div></div>'+
       '</div>'+
       '<div class="section"><div class="section-head"><h2>Not-yet-invoiced files — '+account+'</h2><span class="hint">'+list.length+' matching'+(searchTerm?' “'+esc(searchTerm)+'”':'')+' · not counted toward NASA debt yet</span></div>'+
-        '<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Consignee</th><th>Goods</th><th>Container</th><th>Arrival</th><th class="num">Sold</th><th class="num">Cost (Paid)</th><th class="num">Additional Cost</th><th>Reason</th><th>File #</th></tr></thead>'+
-        '<tbody>'+(rows || '<tr><td colspan="10" class="empty">No pending files for '+account+'.</td></tr>')+'</tbody></table>'+
+        '<div class="table-wrap"><table><thead><tr><th>Customer</th><th>Consignee</th><th>Goods</th><th>Container</th><th>Arrival</th><th class="num">Sold</th><th class="num">Cost (Paid)</th><th class="num">Additional Cost</th><th>Reason</th><th>File #</th><th>Released</th><th class="num" title="Days since release (or since arrival if not released)">Days</th></tr></thead>'+
+        '<tbody>'+(rows || '<tr><td colspan="12" class="empty">No pending files for '+account+'.</td></tr>')+'</tbody></table>'+
         pagination(payKey, page, totalPages, list.length)+
         '</div></div>';
   }
@@ -3141,6 +4278,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   }
 
   function renderView(view){
+    try { setTimeout(updateLateBadges, 0); } catch(e){}
     if(view==='overview') renderOverview();
     else if(view.indexOf('notfinished-')===0) renderNotFinished(view.slice(12));
     else if(view.indexOf('extworker-')===0) renderExternalWorker(view.slice(10));
@@ -3149,6 +4287,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     else if(view==='customers') renderCustomers();
     else if(view==='paymentlog') renderPaymentLog();
     else if(view==='backups') renderBackups();
+    else if(view==='problems') renderProblems();
+    else if(view==='agreements') renderAgreements();
+    else if(view==='tasks') renderTasks();
+    else if(view==='banks') renderBanks();
+    else if(view==='mymoney') renderMyMoney();
     else if(view==='statement'){ if(statementCustomerName) renderCustomerStatement(statementCustomerAccount, statementCustomerName); }
   }
 
@@ -3450,6 +4593,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var date = document.getElementById('pf-date').value;
       var note = document.getElementById('pf-note').value.trim();
       if(!amount || isNaN(amount) || amount===0){ toast('Enter an amount (negative allowed for a reimbursement).', true); return; }
+      if(amount < 0 && !note){ toast('A minus amount (refund) needs a reason — write it in the Note.', true); return; }
       var pm = readMethodFields('pf');
       if(pm.error){ toast(pm.error, true); return; }
       if(curType==='customer'){
