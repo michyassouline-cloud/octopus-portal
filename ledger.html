@@ -1088,6 +1088,26 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   // the existing 2026 data (static snapshot, or last successful live fetch)
   // is left exactly as-is — a failed sync never wipes good data, mirroring
   // the site's own resilience here.
+  function readPortalDriveLinks(){
+    try {
+      var raw = localStorage.getItem('cleartrack_state');
+      var p = raw ? JSON.parse(raw) : {};
+      return { driveLink: (p.driveLink||'').trim(), driveLink2026: (p.driveLink2026||'').trim() };
+    } catch(e){ return { driveLink:'', driveLink2026:'' }; }
+  }
+  function restoreDriveLinksToCloud(local){
+    var rows = [];
+    if(local.driveLink2026) rows.push({ key:'driveLink2026', value: local.driveLink2026 });
+    if(local.driveLink) rows.push({ key:'driveLink', value: local.driveLink });
+    if(!rows.length) return Promise.resolve();
+    return fetch(LEDGER_SB_URL + '/rest/v1/app_settings', {
+      method: 'POST',
+      headers: Object.assign({}, LEDGER_SB_HEADERS, { 'Prefer': 'resolution=merge-duplicates' }),
+      body: JSON.stringify(rows)
+    }).then(function(res){ if(!res.ok) console.error('restoreDriveLinksToCloud:', res.status); })
+      .catch(function(e){ console.error('restoreDriveLinksToCloud:', e); });
+  }
+
   function refreshLiveShipments2026(opts){
     opts = opts || {};
     if(liveSyncInFlight) return Promise.resolve(false);
@@ -1099,13 +1119,25 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       .then(function(rows){
         var link = '';
         (rows||[]).forEach(function(row){ if(row.key==='driveLink2026') link = row.value || ''; });
+        if(!link){
+          // Self-heal: the portal (same site) keeps its Drive links in this
+          // browser's storage and only copies them to the cloud when "Save &
+          // Connect" is pressed. If the cloud copy is missing, take the link
+          // from this browser and put it back in the cloud, so live sync (and
+          // the server-side SMS reminders that read the same row) keep working.
+          var local = readPortalDriveLinks();
+          if(local.driveLink2026){
+            link = local.driveLink2026;
+            restoreDriveLinksToCloud(local);
+          }
+        }
         if(!link){ noLinkSaved = true; return null; }
         return fetchDriveWorkbook(link);
       })
       .then(function(wb){
         if(!wb && noLinkSaved){
           liveSyncReported = true;
-          setSyncStatusText('Live sync off — the 2026 sheet link isn\'t saved in the cloud. On octopus-track.com admin, press "Save & Connect" next to the 2026 link once.');
+          setSyncStatusText('Live sync off — no 2026 sheet link found. Log in to octopus-track.com as admin in this browser, check the 2026 Drive link is filled in, and press "Save & Connect".');
           return false;
         }
         if(!wb){
