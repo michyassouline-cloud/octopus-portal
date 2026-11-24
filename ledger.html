@@ -293,6 +293,12 @@
   .nav-badge{ margin-left:auto; background:var(--danger); color:#fff; font-size:11px; font-weight:700; border-radius:10px; padding:1px 7px; line-height:16px; }
   .wf-alert{ border:1px solid var(--danger); background:var(--danger-soft); border-radius:14px; padding:14px 16px; }
   .wf-alert .table-wrap{ background:var(--surface); }
+  .wf-cur{ font-size:0.7em; font-weight:600; color:var(--ink-faint); letter-spacing:0.03em; }
+  .wf-card-multi{ font-size:24px; }
+  .wf-match{ font-size:12.5px; margin:-6px 0 12px; }
+  .wf-match:empty{ display:none; }
+  .wf-match.good{ color:var(--good); }
+  .wf-match.warn{ color:var(--warn); }
   .field-error{ font-size:11.5px; color:var(--danger); }
 
   .toastwrap{ position:fixed; bottom:20px; right:20px; z-index:100; display:flex; flex-direction:column; gap:8px; }
@@ -2549,14 +2555,21 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }).sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); });
     var open = all.filter(function(p){ return (p.status||'open')==='open'; });
     var sum = function(arr, f){ return arr.reduce(function(a,p){ return a+(Number(p[f])||0); }, 0); };
+    // Amounts in different currencies are never added together.
+    function byCur(arr, fn){
+      var m = {};
+      arr.forEach(function(p){ var c = p.currency || 'ILS'; m[c] = (m[c]||0) + fn(p); });
+      var keys = Object.keys(m).filter(function(c){ return Math.abs(m[c]) > 0.004; }).sort();
+      return keys.length ? keys.map(function(c){ return fmt(m[c])+' <span class="wf-cur">'+esc(c)+'</span>'; }).join(' · ') : '0';
+    }
     var stuckOpen = open.filter(function(p){ return p.type==='stuck'; });
     var discOpen = open.filter(function(p){ return p.type==='discount'; });
     var settOpen = open.filter(function(p){ return p.type==='settlement'; });
     var cards =
       '<div class="grid-cards">'+
-        '<div class="card"><div class="card-label">Stuck / seized — open</div><div class="card-value">'+stuckOpen.length+'</div><div class="card-sub">Goods value '+fmt(sum(stuckOpen,'value'))+'</div></div>'+
-        '<div class="card"><div class="card-label">Port discounts awaiting</div><div class="card-value">'+fmt(sum(discOpen,'amount'))+'</div><div class="card-sub">'+discOpen.length+' open request'+(discOpen.length===1?'':'s')+'</div></div>'+
-        '<div class="card"><div class="card-label">Settlements — still to pay</div><div class="card-value">'+fmt(sum(settOpen,'amount') - sum(settOpen,'paidAmount'))+'</div><div class="card-sub">'+settOpen.length+' open · agreed total '+fmt(sum(settOpen,'amount'))+'</div></div>'+
+        '<div class="card"><div class="card-label">Stuck / seized — open</div><div class="card-value">'+stuckOpen.length+'</div><div class="card-sub">Goods value '+byCur(stuckOpen, function(p){ return Number(p.value)||0; })+'</div></div>'+
+        '<div class="card"><div class="card-label">Port discounts awaiting</div><div class="card-value wf-card-multi">'+byCur(discOpen, function(p){ return Number(p.amount)||0; })+'</div><div class="card-sub">'+discOpen.length+' open request'+(discOpen.length===1?'':'s')+'</div></div>'+
+        '<div class="card"><div class="card-label">Settlements — still to pay</div><div class="card-value wf-card-multi">'+byCur(settOpen, function(p){ return (Number(p.amount)||0) - (Number(p.paidAmount)||0); })+'</div><div class="card-sub">'+settOpen.length+' open · agreed total '+byCur(settOpen, function(p){ return Number(p.amount)||0; })+'</div></div>'+
       '</div>';
     function seg(name, opts, cur){
       return '<div class="seg" style="display:inline-flex;">'+opts.map(function(o){ return '<button data-pf="'+name+':'+o[0]+'" class="'+(cur===o[0]?'active':'')+'">'+o[1]+'</button>'; }).join('')+'</div>';
@@ -2569,9 +2582,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var rows = list.map(function(p){
       var t = PROBLEM_TYPES[p.type] || { short:p.type };
       var detail = '', money = '';
-      if(p.type==='stuck'){ detail = esc(p.issue||'')+(p.goods?' · '+esc(p.goods):''); money = 'Value '+fmt(p.value); }
-      if(p.type==='discount'){ detail = esc(p.place||'')+(p.discountStatus?' · <span class="pill '+(p.discountStatus==='Received'?'good':(p.discountStatus==='Approved'?'accent':'warn'))+'">'+esc(p.discountStatus)+'</span>':''); money = 'Discount '+fmt(p.amount); }
-      if(p.type==='settlement'){ detail = (p.paidAmount ? 'Paid '+fmt(p.paidAmount)+' of '+fmt(p.amount) : 'Nothing paid yet'); money = 'Agreed '+fmt(p.amount); }
+      if(p.type==='stuck'){ detail = esc(p.issue||'')+(p.goods?' · '+esc(p.goods):''); money = 'Value '+fmt(p.value)+' <span class="wf-cur">'+esc(p.currency||'ILS')+'</span>'; }
+      if(p.type==='discount'){ detail = esc(p.place||'')+(p.discountStatus?' · <span class="pill '+(p.discountStatus==='Received'?'good':(p.discountStatus==='Approved'?'accent':'warn'))+'">'+esc(p.discountStatus)+'</span>':''); money = 'Discount '+fmt(p.amount)+' <span class="wf-cur">'+esc(p.currency||'ILS')+'</span>'; }
+      if(p.type==='settlement'){ detail = (p.paidAmount ? 'Paid '+fmt(p.paidAmount)+' of '+fmt(p.amount) : 'Nothing paid yet'); money = 'Agreed '+fmt(p.amount)+' <span class="wf-cur">'+esc(p.currency||'ILS')+'</span>'; }
       var lastRemark = (p.remarks||[]).slice().sort(function(a,b){ return (b.date||'').localeCompare(a.date||''); })[0];
       return '<tr>'+
         '<td>'+fmtDate(p.date)+'</td>'+
@@ -2605,27 +2618,29 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
             '<div class="field"><label>Agent</label><select id="wp-account">'+opt(accts, p.account)+'</select></div>'+
             '<div class="field"><label>Date</label><input type="date" id="wp-date" value="'+esc(p.date||todayISO())+'"></div>'+
             '<div class="field"><label>Customer number / name</label><input id="wp-customer" value="'+esc(p.customer||'')+'" required></div>'+
-            '<div class="field"><label>File number</label><input id="wp-file" value="'+esc(p.fileNumber||'')+'"></div>'+
+            '<div class="field"><label>File number</label><input id="wp-file" value="'+esc(p.fileNumber||'')+'" placeholder="type it — the rest fills in"></div>'+
+            '<div class="field"><label>Currency (for the amounts)</label><select id="wp-currency">'+['ILS','USD','RMB','EUR','JOD'].map(function(c){ return '<option '+((p.currency||'ILS')===c?'selected':'')+'>'+c+'</option>'; }).join('')+'</select></div>'+
           '</div>'+
-          '<div class="field"><label>Containers</label><input id="wp-containers" value="'+esc(p.containers||'')+'" placeholder="e.g. TCNU3428446, MRSU8685833"></div>'+
+          '<div class="field"><label>Containers</label><input id="wp-containers" value="'+esc(p.containers||'')+'" placeholder="e.g. TCNU3428446 — type one and the rest fills in"></div>'+
+          '<div id="wp-match" class="wf-match"></div>'+
           '<div class="wf-type wf-type-stuck">'+
             '<div class="wf-grid2">'+
               '<div class="field"><label>What happened</label><select id="wp-issue">'+opt(STUCK_ISSUES, p.issue||'Seized')+'</select></div>'+
               '<div class="field"><label>Type of goods</label><input id="wp-goods" value="'+esc(p.goods||'')+'" placeholder="e.g. Toys, Electric"></div>'+
-              '<div class="field"><label>Value of goods</label><input type="number" step="0.01" id="wp-value" value="'+esc(p.value||'')+'"></div>'+
+              '<div class="field"><label>Value of goods</label><input type="text" inputmode="decimal" class="wf-money" id="wp-value" value="'+esc(p.value||'')+'"></div>'+
             '</div>'+
           '</div>'+
           '<div class="wf-type wf-type-discount">'+
             '<div class="wf-grid2">'+
               '<div class="field"><label>Port / warehouse</label><input id="wp-place" value="'+esc(p.place||'')+'" placeholder="e.g. Ashdod port, Hatara warehouse"></div>'+
-              '<div class="field"><label>Discount amount</label><input type="number" step="0.01" id="wp-discount" value="'+esc(p.type==='discount'?(p.amount||''):'')+'"></div>'+
+              '<div class="field"><label>Discount amount</label><input type="text" inputmode="decimal" class="wf-money" id="wp-discount" value="'+esc(p.type==='discount'?(p.amount||''):'')+'"></div>'+
               '<div class="field"><label>Discount status</label><select id="wp-dstatus">'+opt(DISCOUNT_STATUSES, p.discountStatus||'Requested')+'</select></div>'+
             '</div>'+
           '</div>'+
           '<div class="wf-type wf-type-settlement">'+
             '<div class="wf-grid2">'+
-              '<div class="field"><label>Total agreed to pay the customer</label><input type="number" step="0.01" id="wp-settle" value="'+esc(p.type==='settlement'?(p.amount||''):'')+'"></div>'+
-              '<div class="field"><label>Paid to the customer so far</label><input type="number" step="0.01" id="wp-paid" value="'+esc(p.paidAmount||'')+'"></div>'+
+              '<div class="field"><label>Total agreed to pay the customer</label><input type="text" inputmode="decimal" class="wf-money" id="wp-settle" value="'+esc(p.type==='settlement'?(p.amount||''):'')+'"></div>'+
+              '<div class="field"><label>Paid to the customer so far</label><input type="text" inputmode="decimal" class="wf-money" id="wp-paid" value="'+esc(p.paidAmount||'')+'"></div>'+
             '</div>'+
             '<div class="hint" style="margin:-6px 0 12px; font-size:12px; color:var(--ink-faint);">To take it off the customer\'s balance, use “Record as refund” after saving — it logs a minus payment with this settlement as the reason.</div>'+
           '</div>'+
@@ -2647,6 +2662,33 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       document.querySelectorAll('.wf-type').forEach(function(el){ el.style.display = el.classList.contains('wf-type-'+t) ? '' : 'none'; });
     }
     document.getElementById('wp-type').addEventListener('change', showType); showType();
+    // Type a file number or a container number and the rest fills in from
+    // the shipment lists (same lookup External Account uses).
+    function lastRef(id){ var raw = document.getElementById(id).value; return id==='wp-containers' ? (raw.split(',').map(function(x){ return x.trim(); }).filter(Boolean).pop() || '') : raw.trim(); }
+    function applyShipmentMatch(src){
+      var box = document.getElementById('wp-match');
+      var ref = lastRef(src);
+      if(!ref){ box.textContent = ''; box.className = 'wf-match'; return; }
+      var m = findShipmentMatch(ref);
+      if(!m){ box.textContent = 'No file or container “'+ref+'” found in the shipment lists — you can still fill it in by hand.'; box.className = 'wf-match warn'; return; }
+      if(canSeeAccount(m.account)) document.getElementById('wp-account').value = m.account;
+      document.getElementById('wp-customer').value = (m.customer||'').trim();
+      if(m.fileNumber) document.getElementById('wp-file').value = m.fileNumber;
+      document.getElementById('wp-containers').value = String(m.containerNumber||'').split(',').map(function(x){ return x.trim(); }).filter(Boolean).join(', ');
+      var g = document.getElementById('wp-goods'); if(g && m.goods) g.value = String(m.goods).trim();
+      box.className = 'wf-match good';
+      box.textContent = '✓ Found: '+(m.customer||'—')+' · '+m.account+' · file '+(m.fileNumber||'—')+' · '+(m.goods||'')+' · '+String(m.containerNumber||'').split(',').filter(function(x){ return x.trim(); }).length+' container(s)'+(m.finalConsignee?' · '+m.finalConsignee:'')+(m.arrivalDate?' · arrived '+fmtDate(m.arrivalDate):'');
+    }
+    var matchTimer = null;
+    ['wp-file','wp-containers'].forEach(function(id){
+      var el = document.getElementById(id);
+      el.addEventListener('input', function(){ clearTimeout(matchTimer); matchTimer = setTimeout(function(){
+        var ref = lastRef(id);
+        if(ref && findShipmentMatch(ref)) applyShipmentMatch(id);
+        else { var box = document.getElementById('wp-match'); box.textContent = ''; box.className = 'wf-match'; }
+      }, 350); });
+      el.addEventListener('change', function(){ applyShipmentMatch(id); });
+    });
     document.getElementById('wp-cancel').addEventListener('click', closeModal);
     document.getElementById('wf-overlay').addEventListener('click', function(e){ if(e.target.id==='wf-overlay') closeModal(); });
     if(!isNew) document.getElementById('wp-delete').addEventListener('click', function(){
@@ -2676,13 +2718,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         containers:document.getElementById('wp-containers').value.trim(), description:document.getElementById('wp-desc').value.trim(),
         remarks:p.remarks||[], status: document.getElementById('wp-resolved').checked ? 'resolved' : 'open',
         resolvedAt: document.getElementById('wp-resolved').checked ? (p.resolvedAt || todayISO()) : '',
-        refundPaymentId: p.refundPaymentId || ''
+        refundPaymentId: p.refundPaymentId || '',
+        currency: document.getElementById('wp-currency').value || 'ILS'
       };
       if(!rec.customer){ toast('Enter the customer.', true); return; }
       if(!canSeeAccount(rec.account)){ toast('Not available for your account.', true); return; }
-      if(t==='stuck'){ rec.issue = document.getElementById('wp-issue').value; rec.goods = document.getElementById('wp-goods').value.trim(); rec.value = parseFloat(document.getElementById('wp-value').value)||0; }
-      if(t==='discount'){ rec.place = document.getElementById('wp-place').value.trim(); rec.amount = parseFloat(document.getElementById('wp-discount').value)||0; rec.discountStatus = document.getElementById('wp-dstatus').value; }
-      if(t==='settlement'){ rec.amount = parseFloat(document.getElementById('wp-settle').value)||0; rec.paidAmount = parseFloat(document.getElementById('wp-paid').value)||0; }
+      if(t==='stuck'){ rec.issue = document.getElementById('wp-issue').value; rec.goods = document.getElementById('wp-goods').value.trim(); rec.value = parseAmount(document.getElementById('wp-value').value); }
+      if(t==='discount'){ rec.place = document.getElementById('wp-place').value.trim(); rec.amount = parseAmount(document.getElementById('wp-discount').value); rec.discountStatus = document.getElementById('wp-dstatus').value; }
+      if(t==='settlement'){ rec.amount = parseAmount(document.getElementById('wp-settle').value); rec.paidAmount = parseAmount(document.getElementById('wp-paid').value); }
       var rm = document.getElementById('wp-remark').value.trim();
       if(rm) rec.remarks = rec.remarks.concat([newRemark(rm)]);
       if(isNew) state.problems.push(rec);
