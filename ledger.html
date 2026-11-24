@@ -1075,6 +1075,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return tryNext(0);
   }
 
+  var liveSyncReported = false; // once the live sync has said something, a later cloud load must not overwrite it
   function setSyncStatusText(text){
     var el = document.getElementById('syncstatus-text');
     if(el) el.textContent = text;
@@ -1091,17 +1092,24 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     opts = opts || {};
     if(liveSyncInFlight) return Promise.resolve(false);
     liveSyncInFlight = true;
+    var noLinkSaved = false;
     setSyncStatusText('Syncing 2026 shipment data…');
     return fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=in.(driveLink2026)&select=key,value', { headers: LEDGER_SB_HEADERS })
       .then(function(res){ return res.ok ? res.json() : []; })
       .then(function(rows){
         var link = '';
         (rows||[]).forEach(function(row){ if(row.key==='driveLink2026') link = row.value || ''; });
-        if(!link){ setSyncStatusText('No live shipment source configured yet.'); return null; }
+        if(!link){ noLinkSaved = true; return null; }
         return fetchDriveWorkbook(link);
       })
       .then(function(wb){
+        if(!wb && noLinkSaved){
+          liveSyncReported = true;
+          setSyncStatusText('Live sync off — the 2026 sheet link isn\'t saved in the cloud. On octopus-track.com admin, press "Save & Connect" next to the 2026 link once.');
+          return false;
+        }
         if(!wb){
+          liveSyncReported = true;
           setSyncStatusText('Live sync unavailable — showing last known 2026 data' + (state.meta.lastSync ? (' (synced '+fmtSyncTime(state.meta.lastSync)+')') : '') + '.');
           return false;
         }
@@ -1126,6 +1134,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         state.meta.lastSync = new Date().toISOString();
         sbSaveLedger(state); // cloud-only — never republishes the artifact itself
         sbPushCustomerBalances();
+        liveSyncReported = true;
         setSyncStatusText('Shipment data synced '+fmtSyncTime(state.meta.lastSync)+'.');
         var sf = document.getElementById('sidebarfoot');
         if(sf && !ACCESS.label) sf.textContent = 'Shipment data synced '+fmtSyncTime(state.meta.lastSync)+' · 2025–2026';
@@ -1951,13 +1960,45 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var pct = Math.round(natCounts[k]/natTotal*100);
       return '<div style="width:'+pct+'%; background:'+NATIONALITY_COLORS[k]+';" title="'+NATIONALITY_LABELS[k]+': '+natCounts[k]+'"></div>';
     }).join('') : '';
+    // Average price per container, by consignee origin — NORMAL goods only.
+    // Toys / Electric / Gas etc. cost far more per container, so mixing them
+    // in made one origin look pricier just because of what was shipped.
+    // Each Normal file's sold amount is spread over every container in that
+    // file (a 3-container file sold for 45,000 = 15,000 per container); files
+    // with no price yet ("Amount TBD") are left out.
+    var natAvg = {};
+    rows.forEach(function(r){
+      var amt = Number(r.sold)||0;
+      if(amt<=0) return;
+      if((r.goods||'').trim().toLowerCase()!=='normal') return;
+      var k = r.nationality||'';
+      natAvg[k] = natAvg[k] || { sold:0, containers:0 };
+      natAvg[k].sold += amt;
+      natAvg[k].containers += (r.containerCount||1);
+    });
+    function avgOf(k){ var a = natAvg[k]; return (a && a.containers) ? a.sold/a.containers : null; }
     var natLegend = natKeys.map(function(k){
       var arLabel = k==='IL' ? 'إسرائيلي' : (k==='PS' ? 'فلسطيني' : 'غير محدد');
-      return '<span style="display:inline-flex; align-items:center; gap:6px; margin-right:18px;">'+
-        '<span style="width:10px;height:10px;border-radius:3px;background:'+NATIONALITY_COLORS[k]+';display:inline-block;"></span>'+
-        '<span>'+bi(NATIONALITY_LABELS[k]+' ('+natCounts[k]+')', arLabel)+'</span>'+
+      var avg = avgOf(k), a = natAvg[k];
+      var avgLine = avg!=null
+        ? '<div class="num" style="margin-top:4px; font-size:15px; font-weight:600; color:var(--ink);">'+fmt(avg)+' <span style="font-size:11.5px; font-weight:500; color:var(--ink-faint);">'+bi('avg per container · Normal files only · '+a.containers+' container'+(a.containers===1?'':'s'), 'متوسط السعر للحاوية · ملفات عادي فقط · '+a.containers+' حاوية')+'</span></div>'
+        : '<div class="muted" style="margin-top:4px; font-size:12px;">'+bi('No priced Normal files','لا توجد ملفات عادي مسعّرة')+'</div>';
+      return '<span style="display:inline-flex; align-items:flex-start; gap:6px; margin-right:28px; margin-bottom:6px;">'+
+        '<span style="width:10px;height:10px;border-radius:3px;background:'+NATIONALITY_COLORS[k]+';display:inline-block;margin-top:5px;"></span>'+
+        '<span>'+bi(NATIONALITY_LABELS[k]+' ('+natCounts[k]+')', arLabel)+avgLine+'</span>'+
       '</span>';
     }).join('');
+    var ilAvg = avgOf('IL'), psAvg = avgOf('PS');
+    if(ilAvg!=null && psAvg!=null){
+      var gap = ilAvg - psAvg;
+      var pct = psAvg ? Math.round(Math.abs(gap)/psAvg*100) : 0;
+      natLegend += '<div style="margin-top:8px; font-size:12.5px; color:var(--ink-dim);">'+
+        (Math.abs(gap) < 0.5
+          ? bi('Normal files only: Israeli and Palestinian names average the same per container.','ملفات عادي فقط: متوسط السعر للحاوية متساوٍ للأسماء الإسرائيلية والفلسطينية.')
+          : bi('Normal files only: '+(gap>0?'Israeli':'Palestinian')+' names average '+fmt(Math.abs(gap))+' more per container ('+pct+'%).',
+               'ملفات عادي فقط: متوسط الحاوية للأسماء '+(gap>0?'الإسرائيلية':'الفلسطينية')+' أعلى بـ '+fmt(Math.abs(gap))+' ('+pct+'%).'))+
+      '</div>';
+    }
 
     // Every individual payment you logged for this customer, plus any manual
     // balance adjustment — so "Total paid" / "Total debt" are never a mystery
@@ -3464,7 +3505,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       migrateShipmentIdsForLiveSync();
       var syncNow = state.meta.lastSync;
       document.getElementById('sidebarfoot').textContent = syncNow ? ('Shipment data synced '+fmtSyncTime(syncNow)+' · 2025–2026') : 'Shipment data synced from Drive.';
-      setSyncStatusText(syncNow ? ('Shipment data synced '+fmtSyncTime(syncNow)+'.') : 'Shipment data not yet synced.');
+      if(!liveSyncReported) setSyncStatusText(syncNow ? ('Shipment data synced '+fmtSyncTime(syncNow)+'.') : 'Shipment data not yet synced.');
       applyAccessRestrictions();
       renderView(currentView);
       sbPushCustomerBalances();
