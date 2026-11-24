@@ -847,6 +847,34 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       }
       return '';
     }
+    // Money columns (Sold 23, Paid 24, Profit 25, Additional cost 27) need
+    // different merge handling from text columns: one merged money cell is
+    // ONE amount, even when it covers rows of two different files or two
+    // customers (e.g. a single "Sold 150,000" cell spanning files 1148672 +
+    // 1148671). Reading it on every row used to count it once per record.
+    // Now every money cell is counted exactly once:
+    //   - an ordinary (unmerged) cell belongs to its own row;
+    //   - a merged cell's amount is shared between the records whose rows
+    //     sit inside it, in proportion to how many of its rows each has
+    //     (one row = one container line).
+    // So for each tab the totals always equal the plain sum of the column.
+    function mergeIndexAt(rowIdx, colIdx){
+      for(var k=0;k<merges.length;k++){
+        var m = merges[k];
+        if(rowIdx>=m.s.r && rowIdx<=m.e.r && colIdx>=m.s.c && colIdx<=m.e.c) return k;
+      }
+      return -1;
+    }
+    var mergeTotals = {}; // merge id -> its one amount
+    function moneyCell(rowIdx, colIdx, rowArr){
+      var k = mergeIndexAt(rowIdx, colIdx);
+      if(k === -1) return { v: numval(rowArr[colIdx]), m: null };
+      var m = merges[k];
+      if(m.s.r === m.e.r) return { v: numval(cellVal(rowIdx, colIdx)), m: null }; // horizontal-only merge
+      var id = sheetName+':'+k;
+      mergeTotals[id] = numval(cellVal(rowIdx, colIdx));
+      return { v: 0, m: id };
+    }
     var rows = XLSX.utils.sheet_to_json(ws, { header:1, defval:'' });
     var raw = [];
     var last = { fileNum:'', arrivalDate:'' };
@@ -854,6 +882,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var r = rows[i];
       (function(){
         function cv(col){ var v = cellVal(i, col); return v !== '' ? v : (r[col] !== undefined ? r[col] : ''); }
+        var mSold, mPaid, mProfit, mAdd;
         var custId = String(cv(2)).trim();
         var cnPrimary = String(cv(8)).trim();
         var cnSecondary = String(cv(19)).trim();
@@ -889,10 +918,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           arrivalDate: arrivalDate || last.arrivalDate,
           declNo: String(cv(30)).trim(),
           sendInvoices: cv(22),
-          sold: numval(cv(23)),
-          paid: numval(cv(24)),
-          profit: numval(cv(25)),
-          addCost: numval(cv(27)),
+          sold: (mSold = moneyCell(i, 23, r)).v,
+          paid: (mPaid = moneyCell(i, 24, r)).v,
+          profit: (mProfit = moneyCell(i, 25, r)).v,
+          addCost: (mAdd = moneyCell(i, 27, r)).v,
+          moneyMerge: { sold: mSold.m, paid: mPaid.m, profit: mProfit.m, addCost: mAdd.m },
           addReason: String(cv(28)||'').trim(),
           remarks: String(cv(29)).trim()
         });
@@ -927,15 +957,45 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           var v = custRows.map(function(r){ return r[field]; }).find(function(v){ return v && String(v).trim()!=='' && String(v).toLowerCase()!=='no'; });
           merged[field] = v || '';
         });
+        // Unmerged money cells: each row's own amount, added up. Merged
+        // cells: remember how many of this record's rows sit inside each
+        // merge; the amount is shared out after all records are built.
+        merged.moneyMergeRows = {};
         ['sold','paid','profit','addCost'].forEach(function(field){
-          var v = custRows.map(function(r){ return r[field]; }).find(function(v){ return v; });
-          merged[field] = v || 0;
+          var sum = 0, rowsIn = {};
+          custRows.forEach(function(r){
+            var id = r.moneyMerge && r.moneyMerge[field];
+            if(id) rowsIn[id] = (rowsIn[id]||0) + 1;
+            else sum += Number(r[field])||0;
+          });
+          merged[field] = sum;
+          merged.moneyMergeRows[field] = rowsIn;
         });
+        delete merged.moneyMerge;
         merged.sendInvoices = custRows.map(function(r){ return r.sendInvoices; }).find(function(v){ return v && String(v).trim()!==''; }) || '';
         result.push(merged);
       });
       gi = j;
     }
+    // Share out each merged money cell between the records whose rows sit
+    // inside it, by number of rows (container lines) — counted once in total.
+    ['sold','paid','profit','addCost'].forEach(function(field){
+      var byMerge = {};
+      result.forEach(function(rec){
+        var rowsIn = (rec.moneyMergeRows||{})[field] || {};
+        Object.keys(rowsIn).forEach(function(id){ (byMerge[id] = byMerge[id] || []).push({ rec:rec, n:rowsIn[id] }); });
+      });
+      Object.keys(byMerge).forEach(function(id){
+        var parts = byMerge[id], total = mergeTotals[id] || 0;
+        var nsum = parts.reduce(function(a,p){ return a+p.n; }, 0), given = 0;
+        parts.forEach(function(p, idx){
+          var share = idx === parts.length-1 ? Math.round((total - given)*100)/100 : Math.round(total * p.n / nsum * 100) / 100;
+          given += share;
+          p.rec[field] = Math.round(((Number(p.rec[field])||0) + share)*100)/100;
+        });
+      });
+    });
+    result.forEach(function(rec){ delete rec.moneyMergeRows; });
     return result;
   }
 
