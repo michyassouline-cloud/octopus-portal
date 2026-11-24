@@ -3257,6 +3257,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
   // =====================================================================
   var PRIV_KEY = 'ledger_private_data', PRIV_BACKUP_PREFIX = 'ledger_private_backup_';
   var PRIV_CATEGORIES = ['Investment','Loan','Business expense','Personal','Family','Gift','Salary / payment','Other'];
+  var PRIV_METHODS = { cash:'Cash', check:'Check', bank:'Bank transfer', card:'Credit card', alipay:'Alipay', wechat:'WeChat Pay', usdt:'USDT' };
   var priv = null, privBaseline = null, privLoading = null;
   var privFilter = { person:'all', project:'all', category:'all', dir:'all', currency:'all', from:'', to:'' };
   function loadPriv(){
@@ -3369,7 +3370,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '<td><b>'+esc(e.person)+'</b></td>'+
         '<td>'+esc(e.project||'—')+'</td>'+
         '<td>'+esc(e.purpose||'')+(e.note?'<div class="wf-cellnote">'+esc(e.note)+'</div>':'')+'</td>'+
-        '<td><span class="pill">'+esc(e.category||'Other')+'</span>'+(e.method?' <span class="muted" style="font-size:11.5px;">'+esc(PAYMENT_METHODS[e.method]||e.method)+'</span>':'')+'</td>'+
+        '<td><span class="pill">'+esc(e.category||'Other')+'</span>'+(e.method?' <span class="muted" style="font-size:11.5px;">'+esc(PRIV_METHODS[e.method]||e.method)+'</span>':'')+'</td>'+
         '<td class="num" style="color:'+(e.dir==='in'?'var(--good)':'var(--ink)')+'; white-space:nowrap;">'+(e.dir==='in'?'+ ':'− ')+fmt(e.amount)+' <span class="muted" style="font-size:11px;">'+esc(e.currency||'ILS')+'</span></td>'+
         '<td><button class="btn small ghost" data-priv-edit="'+e.id+'">Edit</button></td></tr>';
     }).join('');
@@ -3399,7 +3400,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           '<div class="field"><label>Currency</label><input id="pm-cur" list="pm-curs" value="'+esc(e.currency||'ILS')+'"><datalist id="pm-curs">'+currencies.map(function(c){ return '<option value="'+esc(c)+'">'; }).join('')+'</datalist></div>'+
           '<div class="field"><label>Date</label><input type="date" id="pm-date" value="'+esc(e.date||todayISO())+'"></div>'+
           '<div class="field"><label>Category</label><select id="pm-cat">'+uniqSorted(PRIV_CATEGORIES.concat([e.category])).map(function(c){ return '<option '+(c===e.category?'selected':'')+'>'+esc(c)+'</option>'; }).join('')+'</select></div>'+
-          '<div class="field"><label>How</label><select id="pm-method">'+Object.keys(PAYMENT_METHODS).map(function(k){ return '<option value="'+k+'" '+(k===e.method?'selected':'')+'>'+PAYMENT_METHODS[k]+'</option>'; }).join('')+'</select></div>'+
+          '<div class="field"><label>How</label><select id="pm-method">'+Object.keys(PRIV_METHODS).map(function(k){ return '<option value="'+k+'" '+(k===e.method?'selected':'')+'>'+PRIV_METHODS[k]+'</option>'; }).join('')+'</select></div>'+
         '</div>'+
         '<div class="field"><label>What for</label><input id="pm-purpose" value="'+esc(e.purpose||'')+'" placeholder="e.g. stock purchase, office rent, share of investment"></div>'+
         '<div class="field"><label>Note (optional)</label><textarea id="pm-note" rows="2">'+esc(e.note||'')+'</textarea></div>'+
