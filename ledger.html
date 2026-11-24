@@ -103,20 +103,21 @@
     background:var(--surface);
     border-right:1px solid var(--border);
     display:flex; flex-direction:column;
-    padding:22px 16px;
-    gap:22px;
+    padding:14px 12px;
+    gap:10px;
   }
   .brand{ display:flex; flex-direction:column; gap:2px; padding:0 8px; }
-  .brand .mark{ font-family:var(--font-display); font-weight:700; font-size:20px; letter-spacing:0.01em; }
+  .brand .mark{ font-family:var(--font-display); font-weight:700; font-size:18px; letter-spacing:0.01em; }
   .brand .sub{ font-size:11px; color:var(--ink-faint); text-transform:uppercase; letter-spacing:0.08em; }
 
-  .sidebar nav{ display:flex; flex-direction:column; gap:2px; }
-  .navlabel{ font-size:10.5px; text-transform:uppercase; letter-spacing:0.09em; color:var(--ink-faint); padding:14px 10px 6px; }
+  .sidebar nav{ display:flex; flex-direction:column; gap:0; }
+  .sidebar{ overflow-y:auto; overscroll-behavior:contain; }
+  .navlabel{ font-size:10px; text-transform:uppercase; letter-spacing:0.09em; color:var(--ink-faint); padding:9px 10px 3px; }
   .navitem{
-    display:flex; align-items:center; gap:10px;
-    padding:8px 10px; border-radius:8px;
+    display:flex; align-items:center; gap:9px;
+    padding:4px 10px; border-radius:7px;
     color:var(--ink-dim); text-decoration:none;
-    font-size:13.5px; font-weight:500;
+    font-size:13px; font-weight:500;
     cursor:pointer; border:1px solid transparent; background:none; text-align:left; width:100%;
   }
   .navitem .dot{ width:7px; height:7px; border-radius:50%; background:currentColor; opacity:0.55; flex:none; }
@@ -250,17 +251,24 @@
   .seg{ display:flex; border:1px solid var(--border); border-radius:9px; overflow:hidden; }
   .seg button{ flex:1; padding:8px 10px; border:none; background:var(--surface); color:var(--ink-dim); font-weight:600; font-size:12.5px; cursor:pointer; }
   .seg button.active{ background:var(--accent); color:#fff; }
+  .seg button{ white-space:nowrap; }
   .wf-cellnote{ font-size:11.5px; color:var(--ink-faint); margin-top:2px; font-weight:400; }
-  .wf-week th, .wf-week td{ white-space:nowrap; }
+  .wf-week{ min-width:0; }
+  .wf-week th, .wf-week td{ white-space:nowrap; padding:8px 10px; }
   .wf-grid2{ display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:0 12px; }
   .wf-modal{ max-width:640px; width:calc(100vw - 32px); max-height:calc(100vh - 40px); overflow:auto; }
   .wf-remarks{ display:flex; flex-direction:column; gap:6px; max-height:180px; overflow:auto; padding:8px 10px; border:1px solid var(--border); border-radius:8px; background:var(--surface-2); }
   .wf-remark{ font-size:12.5px; }
   .wf-remark-date{ display:block; font-size:11px; color:var(--ink-faint); }
   .wf-label{ font-size:12px; font-weight:600; color:var(--ink-dim); margin-bottom:4px; }
-  .wf-cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(300px,1fr)); gap:14px; }
+  .wf-cards{ display:grid; grid-template-columns:repeat(auto-fill,minmax(340px,1fr)); gap:14px; }
   .wf-card{ background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:16px 18px; box-shadow:var(--shadow); }
-  .wf-mini{ width:100%; margin-top:10px; font-size:12.5px; border-collapse:collapse; }
+  .wf-mini{ width:100%; min-width:0 !important; margin-top:10px; font-size:12.5px; border-collapse:collapse; table-layout:auto; }
+  .wf-mini thead th{ position:static; padding:5px 6px; font-size:10.5px; white-space:normal; background:none; }
+  .wf-mini tbody td{ padding:5px 6px; font-size:12.5px; white-space:normal; overflow-wrap:break-word; }
+  .wf-mini .num, .wf-mini td.num{ white-space:nowrap; text-align:right; }
+  .wf-mini thead th.num{ text-align:right; }
+  .wf-card{ min-width:0; overflow:hidden; }
   .wf-mini th, .wf-mini td{ padding:4px 6px; border-bottom:1px solid var(--border); text-align:left; }
   .wf-mini .num{ text-align:right; }
   .wf-price-row{ display:grid; grid-template-columns:2fr 1fr 1.3fr auto; gap:6px; margin-bottom:6px; }
@@ -2493,7 +2501,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     return { buckets:buckets, data:data };
   }
   function weeklyMoneyHTML(){
-    var wm = weeklyMoney(), accts = wfAccounts();
+    var wm = weeklyMoney(), accts = wfAccounts().filter(function(a){ return a!=='Ayman'; });
     var head = '<tr><th>When</th>'+accts.map(function(a){ return '<th class="num" colspan="2" style="color:'+ACCOUNT_COLOR[a]+'">'+a+'</th>'; }).join('')+(accts.length>1?'<th class="num" colspan="2">All</th>':'')+'</tr>'+
       '<tr><th></th>'+accts.concat(accts.length>1?['All']:[]).map(function(){ return '<th class="num" style="font-size:11px;">We pay</th><th class="num" style="font-size:11px;">Customers owe</th>'; }).join('')+'</tr>';
     var rows = wm.buckets.map(function(b){
@@ -2502,18 +2510,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var c = wm.data[b.key][a];
         tot.pay += c.payKnown + c.payEstimated; tot.est += c.payEstimated; tot.collect += c.collect; tot.cont += c.containers;
         if(!c.containers) return '<td class="num muted">—</td><td class="num muted">—</td>';
-        var notes = [];
-        if(c.estContainers) notes.push(c.estContainers+' Normal est. @12,000');
-        if(c.noCostContainers) notes.push(c.noCostContainers+' no cost yet');
-        return '<td class="num" title="'+c.containers+' containers">'+fmt(c.payKnown + c.payEstimated)+
+        var notes = [], tip = [c.containers+' containers'];
+        if(c.estContainers){ notes.push(c.estContainers+' est.'); tip.push(c.estContainers+' Normal containers estimated at 12,000 each'); }
+        if(c.noCostContainers){ notes.push(c.noCostContainers+' no cost'); tip.push(c.noCostContainers+' containers with no cost yet (not counted)'); }
+        return '<td class="num" title="'+esc(tip.join(' · '))+'">'+fmt(c.payKnown + c.payEstimated)+
             '<div class="wf-cellnote">'+c.containers+' cont.'+(notes.length?' · '+esc(notes.join(' · ')):'')+'</div></td>'+
-          '<td class="num">'+fmt(c.collect)+(c.noPriceContainers?'<div class="wf-cellnote">'+c.noPriceContainers+' no price yet</div>':'')+'</td>';
+          '<td class="num" title="'+(c.noPriceContainers?c.noPriceContainers+' containers with no sold price yet (not counted)':'')+'">'+fmt(c.collect)+(c.noPriceContainers?'<div class="wf-cellnote">'+c.noPriceContainers+' no price</div>':'')+'</td>';
       }).join('');
       var all = accts.length>1 ? '<td class="num" style="font-weight:700;">'+(tot.cont?fmt(tot.pay):'—')+(tot.cont?'<div class="wf-cellnote">'+tot.cont+' cont.</div>':'')+'</td><td class="num" style="font-weight:700;">'+(tot.cont?fmt(tot.collect):'—')+'</td>' : '';
       return '<tr><td><b>'+esc(b.label)+'</b><div class="wf-cellnote">'+esc(b.sub)+'</div></td>'+cells+all+'</tr>';
     }).join('');
-    return '<div class="section"><div class="section-head"><h2>Money by week</h2><span class="hint">2026 files not invoiced and not released yet, by arrival week (Sun–Sat). “We pay” = cost to NASA; Normal containers with no cost yet are estimated at 12,000 each.</span></div>'+
-      '<div class="table-wrap" style="overflow-x:auto;"><table class="wf-week">'+'<thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div></div>';
+    return '<div class="section"><div class="section-head"><h2>Money by week</h2><span class="hint">Not invoiced, not released · by arrival week (Sun–Sat) · “est.” = Normal containers counted at 12,000</span></div>'+
+      '<div class="table-wrap"><table class="wf-week">'+'<thead>'+head+'</thead><tbody>'+rows+'</tbody></table></div></div>';
   }
 
   // ---------- 3/5/6. Problems ----------
@@ -2694,7 +2702,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var today = todayISO();
       var expired = a.validTo && a.validTo < today;
       var status = a.active===false ? '<span class="pill">Inactive</span>' : (expired ? '<span class="pill warn">Expired '+fmtShort(a.validTo)+'</span>' : '<span class="pill good">Active</span>');
-      var prices = (a.prices||[]).length ? '<table class="wf-mini"><thead><tr><th>Goods</th><th class="num">Min. containers</th><th class="num">Price / container</th></tr></thead><tbody>'+
+      var prices = (a.prices||[]).length ? '<table class="wf-mini"><thead><tr><th>Goods</th><th class="num">Min. cont.</th><th class="num">Price / cont.</th></tr></thead><tbody>'+
         a.prices.map(function(x){ return '<tr><td>'+esc(x.goods||'—')+'</td><td class="num">'+(x.minContainers?esc(x.minContainers):'—')+'</td><td class="num">'+fmt(x.price)+'</td></tr>'; }).join('')+'</tbody></table>' : '';
       return '<div class="wf-card">'+
         '<div style="display:flex; justify-content:space-between; gap:10px; align-items:flex-start;">'+
@@ -3296,7 +3304,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       rows.sort(function(a,b){ return (b.out-b.back) - (a.out-a.back); });
       if(!rows.length) return '';
       return '<div class="wf-card"><div class="wf-label" style="font-size:13px;">By '+label+'</div><table class="wf-mini"><thead><tr><th>'+label+'</th><th class="num">Given</th><th class="num">Back</th><th class="num">Net</th></tr></thead><tbody>'+
-        rows.slice(0,25).map(function(r){ return '<tr><td><a href="#" data-priv-pick="'+field+':'+esc(r.k)+'">'+esc(r.k)+'</a> <span class="muted">'+esc(r.c)+' · '+r.n+'×</span></td><td class="num">'+fmt(r.out)+'</td><td class="num">'+fmt(r.back)+'</td><td class="num" style="font-weight:700;">'+fmt(r.out - r.back)+'</td></tr>'; }).join('')+
+        rows.slice(0,25).map(function(r){ return '<tr><td><a href="#" data-priv-pick="'+field+':'+esc(r.k)+'">'+esc(r.k)+'</a><div class="wf-cellnote">'+esc(r.c)+' · '+r.n+' entr'+(r.n===1?'y':'ies')+'</div></td><td class="num">'+fmt(r.out)+'</td><td class="num">'+fmt(r.back)+'</td><td class="num" style="font-weight:700;">'+fmt(r.out - r.back)+'</td></tr>'; }).join('')+
         '</tbody></table></div>';
     }
     function sel(name, label, opts){
