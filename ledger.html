@@ -683,7 +683,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           return res;
         });
       }
-      return ensureDailyBackup(cloud).then(function(){
+      return ensureFrequentBackup(cloud).then(function(){
         var merged = normalizeState(mergeLedgerStates(sbBaseline, local, cloud));
         return sbWriteSetting(LEDGER_SB_SETTING_KEY, merged).then(function(res){
           if(!res.ok) return res;
@@ -701,36 +701,137 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     });
   }
 
-  // ---------- automatic daily backups (kept for 7 days) ----------
-  // The first time the ledger is opened or saved each day, the cloud copy as
-  // it stood at that moment is stored in one of 7 rotating slots
-  // (nasa_ledger_backup_day0..day6), so there is always a start-of-day copy
-  // for each of the last 7 days. Restore from the "Backups" page.
+  // ---------- automatic backups ----------
+  // A copy of the cloud state is stored in a rotating set of slots so there
+  // is always a recent, restorable snapshot on the "Backups" page.
+  //
+  // IMPORTANT HISTORY: this used to take only one snapshot per CALENDAR DAY
+  // (nasa_ledger_backup_day0..day6, one per weekday). That meant up to a
+  // full day's worth of real edits could sit with zero safety net in
+  // between snapshots — exactly what let hours of logged payments vanish
+  // with nothing to restore from. It's now hourly instead (still exposed
+  // through the same 'nasa_ledger_backup_*' key prefix the Backups page
+  // already reads, so old daily backups keep showing up there too) — so the
+  // most anything can ever be missing from the backup list is under an
+  // hour, not most of a working day.
   var BACKUP_PREFIX = 'nasa_ledger_backup_';
-  var BACKUP_DAYS = 7;
-  var backupDoneFor = null;
+  var BACKUP_HOURS = 48; // rolling 48 hourly slots
+  var backupDoneForHour = null;
   function localDateISO(d){
     d = d || new Date();
     return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
   }
-  function backupSlotKey(dateStr){
-    var dayNo = Math.floor(Date.parse(dateStr + 'T00:00:00Z') / 86400000);
-    return BACKUP_PREFIX + 'day' + (dayNo % BACKUP_DAYS);
+  function backupSlotKey(hourNo){
+    return BACKUP_PREFIX + 'hour' + (hourNo % BACKUP_HOURS);
   }
-  function ensureDailyBackup(cloud){
-    var today = localDateISO();
-    if(!cloud || backupDoneFor === today) return Promise.resolve();
-    var key = backupSlotKey(today);
+  function ensureFrequentBackup(cloud){
+    var hourNo = Math.floor(Date.now() / 3600000);
+    if(!cloud || backupDoneForHour === hourNo) return Promise.resolve();
+    var key = backupSlotKey(hourNo);
     return fetch(LEDGER_SB_URL + '/rest/v1/app_settings?key=eq.' + key + '&select=value', { headers: LEDGER_SB_HEADERS, cache: 'no-store' })
       .then(function(res){ if(!res.ok) throw new Error('HTTP ' + res.status); return res.json(); })
       .then(function(rows){
         var existing = null;
         try { existing = rows && rows[0] ? JSON.parse(rows[0].value) : null; } catch(e){}
-        if(existing && existing.date === today){ backupDoneFor = today; return; }
-        return sbWriteSetting(key, { date: today, savedAt: new Date().toISOString(), reason: 'Automatic daily backup (start of day)', state: cloud })
-          .then(function(res){ if(res.ok) backupDoneFor = today; });
+        if(existing && existing.hourNo === hourNo){ backupDoneForHour = hourNo; return; }
+        return sbWriteSetting(key, { date: localDateISO(), hourNo: hourNo, savedAt: new Date().toISOString(), reason: 'Automatic backup', state: cloud })
+          .then(function(res){ if(res.ok) backupDoneForHour = hourNo; });
       })
-      .catch(function(e){ console.error('ensureDailyBackup:', e); });
+      .catch(function(e){ console.error('ensureFrequentBackup:', e); });
+  }
+
+  // ---------- per-row payment tables (nasa_payments / customer_payments) ----------
+  // Payments used to live only as entries inside the one big shared JSON
+  // blob above (app_settings/nasa_ledger_data) — safe for most fields via
+  // the 3-way merge, but every payment still had to pass through a save of
+  // the WHOLE blob. These two tables make logging or removing a single
+  // payment its own, independent database row: one device's insert/delete
+  // can never collide with, or be overwritten by, any other device's save,
+  // no matter what that other save touches or how stale its own copy of
+  // everything else is. This is now the authoritative source for
+  // state.nasaPayments / state.customerPayments; the JSON blob still gets a
+  // copy of them too (harmless — it's what backups snapshot), but adding or
+  // removing a payment no longer depends on it.
+  //
+  // Needs two tables to exist first (see the SQL that ships with this
+  // update) — if they don't exist yet, every call below fails quietly and
+  // logs to the console, and the app behaves exactly as it did before, so
+  // this never blocks anything while the tables are being set up.
+  function nasaPaymentToRow(p){
+    return { id:p.id, account:p.account, amount:p.amount, date:p.date||null, note:p.note||'', method:p.method||'', check_date:p.checkDate||null };
+  }
+  function customerPaymentToRow(p){
+    return { id:p.id, customer:p.customer||'', account:p.account, amount:p.amount, date:p.date||null, note:p.note||'', method:p.method||'', check_date:p.checkDate||null };
+  }
+  function rowToPayment(r){
+    var p = { id:r.id, account:r.account, amount:Number(r.amount), date:r.date||'', note:r.note||'', method:r.method||'', checkDate:r.check_date||'' };
+    if(r.customer != null) p.customer = r.customer;
+    return p;
+  }
+  function sbFetchPaymentTable(table){
+    return fetch(LEDGER_SB_URL + '/rest/v1/' + table + '?select=*', { headers: LEDGER_SB_HEADERS, cache:'no-store' })
+      .then(function(res){ if(!res.ok) throw new Error('HTTP '+res.status); return res.json(); })
+      .then(function(rows){ return (rows||[]).map(rowToPayment); })
+      .catch(function(e){ console.error('sbFetchPaymentTable('+table+'):', e); return null; });
+  }
+  function sbUpsertPaymentRow(table, row){
+    return fetch(LEDGER_SB_URL + '/rest/v1/' + table, {
+      method:'POST',
+      headers: Object.assign({}, LEDGER_SB_HEADERS, { 'Prefer':'resolution=merge-duplicates,return=minimal' }),
+      body: JSON.stringify(row)
+    }).then(function(res){
+      if(res.ok) return { ok:true };
+      return res.text().then(function(txt){ console.error('sbUpsertPaymentRow('+table+'):', res.status, txt); return { ok:false, detail: txt }; });
+    }).catch(function(e){ console.error('sbUpsertPaymentRow('+table+'):', e); return { ok:false, detail: (e&&e.message)||'network error' }; });
+  }
+  function sbDeletePaymentRow(table, id){
+    return fetch(LEDGER_SB_URL + '/rest/v1/' + table + '?id=eq.' + encodeURIComponent(id), { method:'DELETE', headers: LEDGER_SB_HEADERS })
+      .then(function(res){ return { ok: res.ok }; })
+      .catch(function(e){ console.error('sbDeletePaymentRow('+table+'):', e); return { ok:false, detail:(e&&e.message)||'network error' }; });
+  }
+  // Upserts (never deletes) whatever payments are in a given blob snapshot
+  // into the real tables. Safe to call as often as needed — by id, so
+  // running it twice, or against an old backup's payments, only ever adds
+  // or repairs rows, never removes one that's already there.
+  function sbBackfillPaymentTables(blobState){
+    var jobs = [];
+    (blobState.nasaPayments||[]).forEach(function(p){ jobs.push(sbUpsertPaymentRow('nasa_payments', nasaPaymentToRow(p))); });
+    (blobState.customerPayments||[]).forEach(function(p){ jobs.push(sbUpsertPaymentRow('customer_payments', customerPaymentToRow(p))); });
+    return Promise.all(jobs);
+  }
+  // Pulls the authoritative per-row payment data into `state` (replacing
+  // whatever the JSON blob said for just these two fields), then backfills
+  // the tables from whatever `state` has (covers: first run after this
+  // update, or right after restoring an old backup) and re-reads once more
+  // so anything only the blob knew about shows up immediately.
+  function syncPaymentTablesIntoState(){
+    // Capture whatever the blob/state currently says BEFORE touching
+    // anything — this is what gets backfilled into the tables. (Doing this
+    // after fetching the tables would just feed the tables back to
+    // themselves and silently drop anything the tables don't have yet —
+    // exactly the first-run-after-migration and website-still-writes-the-
+    // old-blob cases this whole thing exists to catch.)
+    var blobSnapshot = { nasaPayments: (state.nasaPayments||[]).slice(), customerPayments: (state.customerPayments||[]).slice() };
+    return sbBackfillPaymentTables(blobSnapshot)
+      .then(function(){ return Promise.all([ sbFetchPaymentTable('nasa_payments'), sbFetchPaymentTable('customer_payments') ]); })
+      .then(function(res){
+        if(res[0]) state.nasaPayments = res[0];
+        if(res[1]) state.customerPayments = res[1];
+      })
+      .catch(function(e){ console.error('syncPaymentTablesIntoState:', e); });
+  }
+  var PAYMENT_POLL_MS = 45 * 1000; // bound how out-of-sync one open tab can be with a payment logged elsewhere
+  var paymentPollTimer = null;
+  function startPaymentPolling(){
+    if(paymentPollTimer) clearInterval(paymentPollTimer);
+    paymentPollTimer = setInterval(function(){
+      Promise.all([ sbFetchPaymentTable('nasa_payments'), sbFetchPaymentTable('customer_payments') ]).then(function(res){
+        var changed = false;
+        if(res[0] && !sameJSON(res[0], state.nasaPayments)){ state.nasaPayments = res[0]; changed = true; }
+        if(res[1] && !sameJSON(res[1], state.customerPayments)){ state.customerPayments = res[1]; changed = true; }
+        if(changed){ try { renderView(currentView); } catch(e){ console.error(e); } }
+      });
+    }, PAYMENT_POLL_MS);
   }
 
   // Pushes a small, read-only per-customer balance snapshot (id + current
@@ -2404,8 +2505,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           state = restored;
           setSyncBaseline(restored);
           sbPushCustomerBalances();
-          renderView(currentView);
-          toast('Restored the copy from '+fmtStamp(b.savedAt)+'.');
+          // Fold this backup's payments into the real per-row tables too —
+          // additive only (upsert by id), so this can only bring back a
+          // payment the backup has that the tables are missing, never
+          // remove one the tables have that the backup doesn't.
+          return syncPaymentTablesIntoState().then(function(){
+            renderView(currentView);
+            toast('Restored the copy from '+fmtStamp(b.savedAt)+'.');
+          });
         });
       });
     }).catch(function(e){ toast('Restore failed — '+((e && e.message) || 'error')+'. Nothing was changed.', true); });
@@ -2703,7 +2810,9 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if(!amt){ toast('Enter the agreed amount first and save.', true); return; }
       openConfirmModal('Log a refund of '+fmt(amt)+' to '+p.customer+' ('+p.account+')? It goes in as a minus payment, so it raises what you owe them / lowers what they owe you.', function(){
         var payId = uid();
-        state.customerPayments.push({ id:payId, customer:p.customer, account:p.account, amount:-amt, date:todayISO(), note:'Settlement: '+(p.description||'agreed settlement'), method:'cash', checkDate:'' });
+        var refundPay = { id:payId, customer:p.customer, account:p.account, amount:-amt, date:todayISO(), note:'Settlement: '+(p.description||'agreed settlement'), method:'cash', checkDate:'' };
+        state.customerPayments.push(refundPay);
+        sbUpsertPaymentRow('customer_payments', customerPaymentToRow(refundPay));
         var rec = state.problems.find(function(x){ return x.id===p.id; });
         if(rec){ rec.refundPaymentId = payId; rec.remarks = (rec.remarks||[]).concat([newRemark('Refund of '+fmt(amt)+' recorded on the customer\'s balance')]); }
         renderView(currentView); persist('Refund recorded.');
@@ -4443,8 +4552,8 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var dp = delBtn.dataset.del.split(':');
       var type = dp[0], id = dp.slice(1).join(':');
       openConfirmModal('Remove this logged payment? This cannot be undone.', function(){
-        if(type==='customer') state.customerPayments = state.customerPayments.filter(function(p){ return p.id!==id; });
-        else state.nasaPayments = state.nasaPayments.filter(function(p){ return p.id!==id; });
+        if(type==='customer'){ state.customerPayments = state.customerPayments.filter(function(p){ return p.id!==id; }); sbDeletePaymentRow('customer_payments', id); }
+        else { state.nasaPayments = state.nasaPayments.filter(function(p){ return p.id!==id; }); sbDeletePaymentRow('nasa_payments', id); }
         renderView(currentView);
         persist('Payment removed.');
       });
@@ -4455,6 +4564,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var delNasaId = delNasa.dataset.delNasa;
       openConfirmModal('Remove this NASA payment? This cannot be undone.', function(){
         state.nasaPayments = state.nasaPayments.filter(function(p){ return p.id!==delNasaId; });
+        sbDeletePaymentRow('nasa_payments', delNasaId);
         renderView(currentView);
         persist('Payment removed.');
       });
@@ -4653,11 +4763,15 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var custAccount = document.getElementById('pf-custaccount').value;
         if(!customer){ toast('Enter a customer name.', true); return; }
         if(!ACCESS.full && accessibleAccounts().indexOf(custAccount)===-1){ toast('Not available for your account.', true); return; }
-        state.customerPayments.push({ id:uid(), customer:customer, account:custAccount, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate });
+        var newCustPay = { id:uid(), customer:customer, account:custAccount, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
+        state.customerPayments.push(newCustPay);
+        sbUpsertPaymentRow('customer_payments', customerPaymentToRow(newCustPay));
       } else {
         var account = document.getElementById('pf-account').value;
         if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
-        state.nasaPayments.push({ id:uid(), account:account, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate });
+        var newNasaPay = { id:uid(), account:account, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
+        state.nasaPayments.push(newNasaPay);
+        sbUpsertPaymentRow('nasa_payments', nasaPaymentToRow(newNasaPay));
       }
       closeModal();
       renderView(currentView);
@@ -4804,6 +4918,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }
     ACCESS = computeAccessProfile(userId);
 
+    // Per-row payment tables: pull the authoritative nasaPayments /
+    // customerPayments straight away, backfill them from whatever's in the
+    // embedded snapshot (harmless no-op once the tables already have
+    // everything), and keep polling so two open tabs converge within under
+    // a minute of each other without needing a reload.
+    syncPaymentTablesIntoState().then(function(){ try { renderView(currentView); } catch(e){} });
+    startPaymentPolling();
+
     var sync = state.meta.lastSync;
     document.getElementById('sidebarfoot').textContent = sync ? ('Shipment data synced '+fmtSyncTime(sync)+' · 2025–2026') : 'Shipment data synced from Drive.';
     setSyncStatusText(sync ? ('Shipment data synced '+fmtSyncTime(sync)+'.') : 'Shipment data not yet synced.');
@@ -4841,7 +4963,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         sbPushCustomerBalances();
         return;
       }
-      ensureDailyBackup(cloud);
+      ensureFrequentBackup(cloud);
       setSyncBaseline(cloud);
       state = normalizeState(cloud);
       migrateCustomerAccountScoping();
@@ -4853,6 +4975,11 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       applyAccessRestrictions();
       renderView(currentView);
       sbPushCustomerBalances();
+      // Re-sync against the per-row tables now that `state` reflects the
+      // merged cloud copy too — the tables stay authoritative either way,
+      // this just makes sure anything only the blob knew about gets folded
+      // in (e.g. right after restoring an old backup).
+      syncPaymentTablesIntoState().then(function(){ renderView(currentView); });
     });
   }
 })();
