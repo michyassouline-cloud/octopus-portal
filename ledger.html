@@ -834,6 +834,37 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     }, PAYMENT_POLL_MS);
   }
 
+  // ---------- general live sync for everything else ----------
+  // The payment poll above only covers nasaPayments/customerPayments (now
+  // their own tables). Everything else that still lives in the one shared
+  // blob -- credit limits, adjustments, opening balances, release dates,
+  // office expenses, problems, agreements, tasks, etc. -- used to only
+  // refresh in THIS tab when it reloaded or saved something itself, so a
+  // change made in another browser/device/country could sit unseen here
+  // for hours. This polls the cloud copy on the same cadence and folds in
+  // anything new with the exact same three-way merge every save already
+  // uses (mergeLedgerStates/sbBaseline), so something changed here a
+  // moment ago is never clobbered by what gets pulled in from elsewhere --
+  // and if nobody else changed anything, this is a no-op.
+  var STATE_POLL_MS = 45 * 1000;
+  var statePollTimer = null;
+  function pollLedgerStateFromCloud(){
+    sbFetchLedgerStrict().then(function(cloud){
+      if(!cloud) return;
+      if(sameJSON(cloud, sbBaseline)) return; // nothing new since our last sync
+      var merged = normalizeState(mergeLedgerStates(sbBaseline, state, cloud));
+      setSyncBaseline(merged);
+      if(!sameJSON(merged, state)){
+        state = merged;
+        try { renderView(currentView); } catch(e){ console.error(e); }
+      }
+    }).catch(function(e){ console.error('pollLedgerStateFromCloud:', e); });
+  }
+  function startStatePolling(){
+    if(statePollTimer) clearInterval(statePollTimer);
+    statePollTimer = setInterval(pollLedgerStateFromCloud, STATE_POLL_MS);
+  }
+
   // Pushes a small, read-only per-customer balance snapshot (id + current
   // balance) to its own Supabase table, so octopus-track.com's customer
   // portal can show each customer their own "Total amount owed" at login
@@ -4925,6 +4956,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     // a minute of each other without needing a reload.
     syncPaymentTablesIntoState().then(function(){ try { renderView(currentView); } catch(e){} });
     startPaymentPolling();
+    startStatePolling();
 
     var sync = state.meta.lastSync;
     document.getElementById('sidebarfoot').textContent = sync ? ('Shipment data synced '+fmtSyncTime(sync)+' · 2025–2026') : 'Shipment data synced from Drive.';
