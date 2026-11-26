@@ -1741,6 +1741,17 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(!sel || !fld) return;
     sel.addEventListener('change', function(){ fld.style.display = sel.value==='check' ? '' : 'none'; });
   }
+  // Puts an existing entry's payment method (and check date, if any) back
+  // into the method fields when a modal is opened in Edit mode.
+  function prefillMethodFields(prefix, method, checkDate){
+    var sel = document.getElementById(prefix+'-method');
+    if(!sel) return;
+    sel.value = method || 'cash';
+    var fld = document.getElementById(prefix+'-checkdate-field');
+    if(fld) fld.style.display = sel.value==='check' ? '' : 'none';
+    var cd = document.getElementById(prefix+'-checkdate');
+    if(cd && checkDate) cd.value = checkDate;
+  }
   // Returns {method, checkDate} or {error}.
   function readMethodFields(prefix){
     var method = (document.getElementById(prefix+'-method')||{}).value || 'cash';
@@ -3334,12 +3345,33 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     var m = s.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
     if(m) return m[1]+'-'+m[2].padStart(2,'0')+'-'+m[3].padStart(2,'0');
     m = s.match(/^(\d{1,2})[\/.\-\\ ](\d{1,2})[\/.\-\\ ](\d{2}|\d{4})$/);
+    // Also accept the same day/month/year typed as one plain run of digits
+    // with no separators at all (e.g. "25112026" or "251126") -- the live
+    // slash-insertion below normally beats a user to this, but paste,
+    // autofill, or a very fast typist can still land here first.
+    if(!m) m = s.match(/^(\d{2})(\d{2})(\d{2}|\d{4})$/);
     if(!m) return '';
     var d = +m[1], mo = +m[2], y = m[3].length===2 ? 2000 + +m[3] : +m[3];
     if(mo<1 || mo>12 || d<1 || d>31) return '';
     var dt = new Date(Date.UTC(y, mo-1, d));
     if(dt.getUTCMonth() !== mo-1) return ''; // e.g. 31/02
     return y+'-'+String(mo).padStart(2,'0')+'-'+String(d).padStart(2,'0');
+  }
+  // Auto-inserts '/' after the day and month as plain digits are typed, so
+  // typing "26112026" ends up shown as "26/11/2026" without the user ever
+  // pressing '/' themselves. Leaves anything that isn't a plain run of
+  // digits (someone typing their own slashes, or pasting "26/11/26") alone.
+  function autoSlashDate(raw){
+    // Always rebuilt from the digits alone (whatever separators, if any,
+    // were typed or already auto-inserted are discarded and redrawn) -- a
+    // one-shot "strip non-digit, then bail" check would only insert the
+    // first slash and never the second, since after that first slash the
+    // text already contains a non-digit character.
+    var digits = raw.replace(/[^\d]/g,'').slice(0,8);
+    var out = digits.slice(0,2);
+    if(digits.length>2) out += '/'+digits.slice(2,4);
+    if(digits.length>4) out += '/'+digits.slice(4,8);
+    return out;
   }
   function enhanceDateInput(el){
     if(el.dataset.dmy) return;
@@ -3357,6 +3389,18 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       set: function(v){ var s = String(v||''); NATIVE_VALUE.set.call(this, /^\d{4}-\d{2}-\d{2}$/.test(s) ? isoToDMY(s) : s); }
     });
     NATIVE_VALUE.set.call(el, isoToDMY(iso));
+    // live, while typing: turn a plain run of digits into DD/MM/YYYY as it's
+    // typed, so the slashes appear on their own and the user just keeps
+    // typing straight through (26, then 1126, then 26112026 -> 26/11/2026).
+    el.addEventListener('input', function(){
+      var raw = NATIVE_VALUE.get.call(el);
+      var formatted = autoSlashDate(raw);
+      if(formatted !== raw){
+        NATIVE_VALUE.set.call(el, formatted);
+        try { el.setSelectionRange(formatted.length, formatted.length); } catch(e){}
+      }
+      el.style.borderColor = '';
+    });
     // tidy what was typed (e.g. 5.1.26 -> 05/01/2026) and flag nonsense
     el.addEventListener('blur', function(){
       var raw = NATIVE_VALUE.get.call(el).trim(), iso2 = dmyToISO(raw);
@@ -3950,7 +3994,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
 
     var nasaRows = nasaPays.length ? nasaPays.map(function(p){
       return '<tr><td>'+fmtDate(p.date)+'</td><td class="num">'+fmt(p.amount)+paymentBadges(p)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
-        '<td><button class="btn small ghost danger" data-del-nasa="'+p.id+'">Remove</button></td></tr>';
+        '<td><button class="btn small ghost" data-edit-nasa="'+p.id+'">Edit</button> <button class="btn small ghost danger" data-del-nasa="'+p.id+'">Remove</button></td></tr>';
     }).join('') : '<tr><td colspan="4" class="empty">No payments to NASA logged yet for this account.</td></tr>';
 
     root.innerHTML =
@@ -4102,7 +4146,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         '</label></td>'+
         '<td>'+esc(p.payee||'—')+'</td><td>'+esc(p.reason||'—')+'</td>'+
         '<td class="muted">'+esc(p.ref||'—')+'</td><td>'+matchHtml+'</td>'+
-        '<td><button class="btn small ghost danger" data-del-extw="'+p.id+'">Remove</button></td></tr>';
+        '<td><button class="btn small ghost" data-edit-extw="'+p.id+'">Edit</button> <button class="btn small ghost danger" data-del-extw="'+p.id+'">Remove</button></td></tr>';
     }).join('') : '<tr><td colspan="8" class="empty">No external worker payments match'+(extwPeriodFilter!=='all'||extwReasonFilter!=='all'?' these filters':' yet for '+account)+'.</td></tr>';
 
     root.innerHTML =
@@ -4178,7 +4222,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
           '<span class="pill '+(p.paid!==false?'good':'warn')+'">'+(p.paid!==false?'Paid':'Need to pay')+'</span>'+
         '</label></td>'+
         '<td>'+esc(p.payee||'—')+'</td><td>'+esc(p.reason||'—')+'</td>'+
-        '<td><button class="btn small ghost danger" data-del-officeexp="'+p.id+'">Remove</button></td></tr>';
+        '<td><button class="btn small ghost" data-edit-officeexp="'+p.id+'">Edit</button> <button class="btn small ghost danger" data-del-officeexp="'+p.id+'">Remove</button></td></tr>';
     }).join('') : '<tr><td colspan="6" class="empty">No office expenses match'+(officeExpPeriodFilter!=='all'||officeExpReasonFilter!=='all'?' these filters':' yet for '+account)+'.</td></tr>';
 
     root.innerHTML =
@@ -4453,7 +4497,7 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       var who = p.type==='customer' ? esc(p.customer) : 'NASA payment';
       var badge = p.type==='customer' ? '<span class="pill accent">Customer</span>' : '<span class="pill">NASA</span>';
       return '<tr><td>'+fmtDate(p.date)+'</td><td>'+badge+'</td><td>'+agentBadges(p)+'</td><td>'+who+'</td><td class="num">'+fmt(p.amount)+paymentBadges(p)+'</td><td class="muted">'+esc(p.note||'—')+'</td>'+
-        '<td><button class="btn small ghost danger" data-del="'+p.type+':'+p.id+'">Remove</button></td></tr>';
+        '<td><button class="btn small ghost" data-edit-paylog="'+p.type+':'+p.id+'">Edit</button> <button class="btn small ghost danger" data-del="'+p.type+':'+p.id+'">Remove</button></td></tr>';
     }).join('');
 
     root.innerHTML =
@@ -4523,6 +4567,21 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     if(e.target.id==='btn-log-payment'){ openPaymentModal('customer'); return; }
     var openExtw = e.target.closest('[data-open-extw-pay]');
     if(openExtw){ openExternalWorkerModal(openExtw.dataset.openExtwPay); return; }
+    // ---- edit buttons: reopen the same "log a payment / expense" modal
+    // prefilled with the existing entry, instead of having to delete it and
+    // type it all in again from scratch. ----
+    var editNasa = e.target.closest('[data-edit-nasa]');
+    if(editNasa){ openPaymentModal('nasa', null, null, editNasa.dataset.editNasa); return; }
+    var editCustPay = e.target.closest('[data-edit-paylog]');
+    if(editCustPay){
+      var epp = editCustPay.dataset.editPaylog.split(':');
+      openPaymentModal(epp[0], null, null, epp.slice(1).join(':'));
+      return;
+    }
+    var editExtw = e.target.closest('[data-edit-extw]');
+    if(editExtw){ openExternalWorkerModal(null, editExtw.dataset.editExtw); return; }
+    var editOfficeExp = e.target.closest('[data-edit-officeexp]');
+    if(editOfficeExp){ openOfficeExpenseModal(null, editOfficeExp.dataset.editOfficeexp); return; }
     var openStatement = e.target.closest('[data-open-statement-name]');
     if(openStatement){ showCustomerStatement(openStatement.dataset.openStatementAcct, openStatement.dataset.openStatementName); return; }
     var assignReview = e.target.closest('[data-assign-review-acct]');
@@ -4720,8 +4779,12 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     document.getElementById('confirm-ok').addEventListener('click', function(){ closeModal(); onConfirm(); });
   }
 
-  function openPaymentModal(type, presetAccount, presetCustomer){
+  function openPaymentModal(type, presetAccount, presetCustomer, editId){
     var accounts = accessibleAccounts();
+    var editArr = type==='customer' ? state.customerPayments : state.nasaPayments;
+    var editRec = editId ? (editArr||[]).find(function(x){ return x.id===editId; }) : null;
+    var isEdit = !!editRec;
+    if(isEdit){ presetAccount = editRec.account; presetCustomer = editRec.customer; }
     var initialAccount = (presetAccount && accounts.indexOf(presetAccount)>-1) ? presetAccount : accounts[0];
     function customersForAccount(acct){
       return accessCustomerFilter(customerAggregates()).filter(function(m){ return m.account===acct; }).map(function(m){ return m.customer; }).sort();
@@ -4731,12 +4794,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     root.innerHTML =
       '<div class="overlay" id="modal-overlay">'+
         '<div class="modal">'+
-          '<h3>Log a payment</h3>'+
+          '<h3>'+(isEdit?'Edit payment':'Log a payment')+'</h3>'+
           '<div class="modal-sub">Record money that moved, so balances stay current for everyone.</div>'+
+          (isEdit ? '' :
           '<div class="seg" id="modal-type-seg">'+
             '<button type="button" class="'+(isCustomer?'active':'')+'" data-type="customer">Customer → You</button>'+
             '<button type="button" class="'+(!isCustomer?'active':'')+'" data-type="nasa">You → NASA</button>'+
-          '</div>'+
+          '</div>')+
           '<form id="payment-form">'+
             '<div class="field" id="field-custaccount" style="'+(isCustomer?'':'display:none')+'">'+
               '<label for="pf-custaccount">Account</label>'+
@@ -4752,11 +4816,13 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
               '<label for="pf-account">NASA account</label>'+
               '<select id="pf-account" name="account">'+accounts.map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
-            '<div class="field"><label for="pf-amount">Amount</label><input type="number" step="0.01" id="pf-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
+            '<div class="field"><label for="pf-amount">Amount</label><input type="number" step="0.01" id="pf-amount" name="amount" placeholder="0.00 (negative = reimbursement)" value="'+(isEdit?esc(editRec.amount):'')+'" required></div>'+
             methodFieldsHTML('pf')+
-            '<div class="field"><label for="pf-date">Date</label><input type="date" id="pf-date" name="date" value="'+todayISO()+'" required></div>'+
-            '<div class="field"><label for="pf-note">Note (optional)</label><input type="text" id="pf-note" name="note" placeholder="e.g. check number, bank"></div>'+
+            '<div class="field"><label for="pf-date">Date</label><input type="date" id="pf-date" name="date" value="'+(isEdit?esc(editRec.date||todayISO()):todayISO())+'" required></div>'+
+            '<div class="field"><label for="pf-note">Note (optional)</label><input type="text" id="pf-note" name="note" placeholder="e.g. check number, bank" value="'+(isEdit?esc(editRec.note||''):'')+'"></div>'+
             '<div class="modal-actions">'+
+              (isEdit ? '<button type="button" class="btn ghost danger" id="pf-delete">Delete</button>' : '')+
+              '<span style="flex:1"></span>'+
               '<button type="button" class="btn ghost" id="modal-cancel">Cancel</button>'+
               '<button type="submit" class="btn primary">Save payment</button>'+
             '</div>'+
@@ -4765,21 +4831,35 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       '</div>';
 
     var curType = type;
-    document.getElementById('modal-type-seg').addEventListener('click', function(e){
-      var b = e.target.closest('button[data-type]');
-      if(!b) return;
-      curType = b.dataset.type;
-      document.querySelectorAll('#modal-type-seg button').forEach(function(x){ x.classList.toggle('active', x===b); });
-      document.getElementById('field-customer').style.display = curType==='customer' ? '' : 'none';
-      document.getElementById('field-custaccount').style.display = curType==='customer' ? '' : 'none';
-      document.getElementById('field-account').style.display = curType==='customer' ? 'none' : '';
-    });
+    if(!isEdit){
+      document.getElementById('modal-type-seg').addEventListener('click', function(e){
+        var b = e.target.closest('button[data-type]');
+        if(!b) return;
+        curType = b.dataset.type;
+        document.querySelectorAll('#modal-type-seg button').forEach(function(x){ x.classList.toggle('active', x===b); });
+        document.getElementById('field-customer').style.display = curType==='customer' ? '' : 'none';
+        document.getElementById('field-custaccount').style.display = curType==='customer' ? '' : 'none';
+        document.getElementById('field-account').style.display = curType==='customer' ? 'none' : '';
+      });
+    }
     document.getElementById('pf-custaccount').addEventListener('change', function(e){
       document.getElementById('customer-list').innerHTML = customersForAccount(e.target.value).map(function(c){ return '<option value="'+esc(c)+'">'; }).join('');
     });
     wireMethodFields('pf');
+    if(isEdit) prefillMethodFields('pf', editRec.method, editRec.checkDate);
     document.getElementById('modal-cancel').addEventListener('click', closeModal);
     document.getElementById('modal-overlay').addEventListener('click', function(e){ if(e.target.id==='modal-overlay') closeModal(); });
+    if(isEdit){
+      document.getElementById('pf-delete').addEventListener('click', function(){
+        closeModal();
+        openConfirmModal('Remove this logged payment? This cannot be undone.', function(){
+          if(type==='customer'){ state.customerPayments = state.customerPayments.filter(function(p){ return p.id!==editId; }); sbDeletePaymentRow('customer_payments', editId); }
+          else { state.nasaPayments = state.nasaPayments.filter(function(p){ return p.id!==editId; }); sbDeletePaymentRow('nasa_payments', editId); }
+          renderView(currentView);
+          persist('Payment removed.');
+        });
+      });
+    }
     document.getElementById('payment-form').addEventListener('submit', function(e){
       e.preventDefault();
       var amount = parseFloat(document.getElementById('pf-amount').value);
@@ -4794,43 +4874,58 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
         var custAccount = document.getElementById('pf-custaccount').value;
         if(!customer){ toast('Enter a customer name.', true); return; }
         if(!ACCESS.full && accessibleAccounts().indexOf(custAccount)===-1){ toast('Not available for your account.', true); return; }
-        var newCustPay = { id:uid(), customer:customer, account:custAccount, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
-        state.customerPayments.push(newCustPay);
-        sbUpsertPaymentRow('customer_payments', customerPaymentToRow(newCustPay));
+        if(isEdit){
+          editRec.customer=customer; editRec.account=custAccount; editRec.amount=amount; editRec.date=date; editRec.note=note; editRec.method=pm.method; editRec.checkDate=pm.checkDate;
+          sbUpsertPaymentRow('customer_payments', customerPaymentToRow(editRec));
+        } else {
+          var newCustPay = { id:uid(), customer:customer, account:custAccount, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
+          state.customerPayments.push(newCustPay);
+          sbUpsertPaymentRow('customer_payments', customerPaymentToRow(newCustPay));
+        }
       } else {
         var account = document.getElementById('pf-account').value;
         if(!ACCESS.full && accessibleAccounts().indexOf(account)===-1){ toast('Not available for your account.', true); return; }
-        var newNasaPay = { id:uid(), account:account, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
-        state.nasaPayments.push(newNasaPay);
-        sbUpsertPaymentRow('nasa_payments', nasaPaymentToRow(newNasaPay));
+        if(isEdit){
+          editRec.account=account; editRec.amount=amount; editRec.date=date; editRec.note=note; editRec.method=pm.method; editRec.checkDate=pm.checkDate;
+          sbUpsertPaymentRow('nasa_payments', nasaPaymentToRow(editRec));
+        } else {
+          var newNasaPay = { id:uid(), account:account, amount:amount, date:date, note:note, method:pm.method, checkDate:pm.checkDate };
+          state.nasaPayments.push(newNasaPay);
+          sbUpsertPaymentRow('nasa_payments', nasaPaymentToRow(newNasaPay));
+        }
       }
       closeModal();
       renderView(currentView);
-      persist('Payment logged.');
+      persist(isEdit ? 'Payment updated.' : 'Payment logged.');
     });
     setTimeout(function(){ var f = isCustomer? document.getElementById('pf-customer') : document.getElementById('pf-amount'); if(f) f.focus(); },10);
   }
 
-  function openExternalWorkerModal(presetAccount){
+  function openExternalWorkerModal(presetAccount, editId){
+    var editRec = editId ? (state.externalWorkerPayments||[]).find(function(x){ return x.id===editId; }) : null;
+    var isEdit = !!editRec;
+    if(isEdit) presetAccount = editRec.account;
     var root = document.getElementById('modal-root');
     root.innerHTML =
       '<div class="overlay" id="extw-overlay">'+
         '<div class="modal">'+
-          '<h3>Log external worker payment</h3>'+
+          '<h3>'+(isEdit?'Edit external worker payment':'Log external worker payment')+'</h3>'+
           '<div class="modal-sub">For unexpected amounts paid to an external worker, outside the normal NASA cost flow.</div>'+
           '<form id="extw-form">'+
             '<div class="field"><label for="extw-account">Account</label>'+
               '<select id="extw-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
-            '<div class="field"><label for="extw-payee">Paid to</label><input type="text" id="extw-payee" name="payee" placeholder="Name of worker" required></div>'+
-            '<div class="field"><label for="extw-amount">Amount</label><input type="number" step="0.01" id="extw-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
+            '<div class="field"><label for="extw-payee">Paid to</label><input type="text" id="extw-payee" name="payee" placeholder="Name of worker" value="'+(isEdit?esc(editRec.payee||''):'')+'" required></div>'+
+            '<div class="field"><label for="extw-amount">Amount</label><input type="number" step="0.01" id="extw-amount" name="amount" placeholder="0.00 (negative = reimbursement)" value="'+(isEdit?esc(editRec.amount):'')+'" required></div>'+
             methodFieldsHTML('extw')+
-            '<div class="field"><label for="extw-date">Date</label><input type="date" id="extw-date" name="date" value="'+todayISO()+'" required></div>'+
-            '<div class="field"><label for="extw-reason">Reason</label><input type="text" id="extw-reason" name="reason" placeholder="e.g. extra unloading labor" required></div>'+
-            '<div class="field"><label for="extw-ref">File # or Container #</label><input type="text" id="extw-ref" name="ref" placeholder="e.g. 1138860 or ONEU5892502"></div>'+
+            '<div class="field"><label for="extw-date">Date</label><input type="date" id="extw-date" name="date" value="'+(isEdit?esc(editRec.date||todayISO()):todayISO())+'" required></div>'+
+            '<div class="field"><label for="extw-reason">Reason</label><input type="text" id="extw-reason" name="reason" placeholder="e.g. extra unloading labor" value="'+(isEdit?esc(editRec.reason||''):'')+'" required></div>'+
+            '<div class="field"><label for="extw-ref">File # or Container #</label><input type="text" id="extw-ref" name="ref" placeholder="e.g. 1138860 or ONEU5892502" value="'+(isEdit?esc(editRec.ref||''):'')+'"></div>'+
             '<div class="field" style="margin-top:-6px;"><div id="extw-match-preview" style="font-size:12.5px; color:var(--ink-dim);"></div></div>'+
-            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="extw-paid" checked style="width:auto;">Already paid</label></div>'+
+            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="extw-paid" '+(isEdit?(editRec.paid!==false?'checked':''):'checked')+' style="width:auto;">Already paid</label></div>'+
             '<div class="modal-actions">'+
+              (isEdit ? '<button type="button" class="btn ghost danger" id="extw-delete">Delete</button>' : '')+
+              '<span style="flex:1"></span>'+
               '<button type="button" class="btn ghost" id="extw-cancel">Cancel</button>'+
               '<button type="submit" class="btn primary">Save entry</button>'+
             '</div>'+
@@ -4858,8 +4953,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
     document.getElementById('extw-ref').addEventListener('input', updateMatchPreview);
     updateMatchPreview();
     wireMethodFields('extw');
+    if(isEdit) prefillMethodFields('extw', editRec.method, editRec.checkDate);
     document.getElementById('extw-cancel').addEventListener('click', closeModal);
     document.getElementById('extw-overlay').addEventListener('click', function(e){ if(e.target.id==='extw-overlay') closeModal(); });
+    if(isEdit){
+      document.getElementById('extw-delete').addEventListener('click', function(){
+        closeModal();
+        openConfirmModal('Remove this external worker payment? This cannot be undone.', function(){
+          state.externalWorkerPayments = state.externalWorkerPayments.filter(function(p){ return p.id!==editId; });
+          renderView(currentView);
+          persist('Payment removed.');
+        });
+      });
+    }
     document.getElementById('extw-form').addEventListener('submit', function(e){
       e.preventDefault();
       var amount = parseFloat(document.getElementById('extw-amount').value);
@@ -4876,32 +4982,41 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if(pm.error){ toast(pm.error, true); return; }
       var paid = document.getElementById('extw-paid').checked;
       state.externalWorkerPayments = state.externalWorkerPayments || [];
-      state.externalWorkerPayments.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, ref:ref, paid:paid, method:pm.method, checkDate:pm.checkDate });
+      if(isEdit){
+        editRec.account=account; editRec.amount=amount; editRec.date=date; editRec.payee=payee; editRec.reason=reason; editRec.ref=ref; editRec.paid=paid; editRec.method=pm.method; editRec.checkDate=pm.checkDate;
+      } else {
+        state.externalWorkerPayments.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, ref:ref, paid:paid, method:pm.method, checkDate:pm.checkDate });
+      }
       closeModal();
       renderView(currentView);
-      persist('External worker payment logged.');
+      persist(isEdit ? 'Payment updated.' : 'External worker payment logged.');
     });
     setTimeout(function(){ var f = document.getElementById('extw-amount'); if(f) f.focus(); },10);
   }
 
-  function openOfficeExpenseModal(presetAccount){
+  function openOfficeExpenseModal(presetAccount, editId){
+    var editRec = editId ? (state.officeExpenses||[]).find(function(x){ return x.id===editId; }) : null;
+    var isEdit = !!editRec;
+    if(isEdit) presetAccount = editRec.account;
     var root = document.getElementById('modal-root');
     root.innerHTML =
       '<div class="overlay" id="officeexp-overlay">'+
         '<div class="modal">'+
-          '<h3>Log office expense</h3>'+
+          '<h3>'+(isEdit?'Edit office expense':'Log office expense')+'</h3>'+
           '<div class="modal-sub">Ongoing office costs — salary, water, electricity, taxes and the like.</div>'+
           '<form id="officeexp-form">'+
             '<div class="field"><label for="officeexp-account">Account</label>'+
               '<select id="officeexp-account" name="account">'+accessibleAccounts().map(function(a){ return '<option value="'+a+'" '+(a===presetAccount?'selected':'')+'>'+a+'</option>'; }).join('')+'</select>'+
             '</div>'+
-            '<div class="field"><label for="officeexp-payee">Paid to</label><input type="text" id="officeexp-payee" name="payee" placeholder="e.g. employee name, electric company" required></div>'+
-            '<div class="field"><label for="officeexp-amount">Amount</label><input type="number" step="0.01" id="officeexp-amount" name="amount" placeholder="0.00 (negative = reimbursement)" required></div>'+
+            '<div class="field"><label for="officeexp-payee">Paid to</label><input type="text" id="officeexp-payee" name="payee" placeholder="e.g. employee name, electric company" value="'+(isEdit?esc(editRec.payee||''):'')+'" required></div>'+
+            '<div class="field"><label for="officeexp-amount">Amount</label><input type="number" step="0.01" id="officeexp-amount" name="amount" placeholder="0.00 (negative = reimbursement)" value="'+(isEdit?esc(editRec.amount):'')+'" required></div>'+
             methodFieldsHTML('officeexp')+
-            '<div class="field"><label for="officeexp-date">Date</label><input type="date" id="officeexp-date" name="date" value="'+todayISO()+'" required></div>'+
-            '<div class="field"><label for="officeexp-reason">Category</label><input type="text" id="officeexp-reason" name="reason" placeholder="e.g. Salary, Water, Electricity, Taxes" required></div>'+
-            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="officeexp-paid" checked style="width:auto;">Already paid</label></div>'+
+            '<div class="field"><label for="officeexp-date">Date</label><input type="date" id="officeexp-date" name="date" value="'+(isEdit?esc(editRec.date||todayISO()):todayISO())+'" required></div>'+
+            '<div class="field"><label for="officeexp-reason">Category</label><input type="text" id="officeexp-reason" name="reason" placeholder="e.g. Salary, Water, Electricity, Taxes" value="'+(isEdit?esc(editRec.reason||''):'')+'" required></div>'+
+            '<div class="field" style="flex-direction:row; align-items:center;"><label style="display:flex; align-items:center; gap:8px; font-size:13px; font-weight:500; color:var(--ink); cursor:pointer;"><input type="checkbox" id="officeexp-paid" '+(isEdit?(editRec.paid!==false?'checked':''):'checked')+' style="width:auto;">Already paid</label></div>'+
             '<div class="modal-actions">'+
+              (isEdit ? '<button type="button" class="btn ghost danger" id="officeexp-delete">Delete</button>' : '')+
+              '<span style="flex:1"></span>'+
               '<button type="button" class="btn ghost" id="officeexp-cancel">Cancel</button>'+
               '<button type="submit" class="btn primary">Save entry</button>'+
             '</div>'+
@@ -4910,8 +5025,19 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       '</div>';
 
     wireMethodFields('officeexp');
+    if(isEdit) prefillMethodFields('officeexp', editRec.method, editRec.checkDate);
     document.getElementById('officeexp-cancel').addEventListener('click', closeModal);
     document.getElementById('officeexp-overlay').addEventListener('click', function(e){ if(e.target.id==='officeexp-overlay') closeModal(); });
+    if(isEdit){
+      document.getElementById('officeexp-delete').addEventListener('click', function(){
+        closeModal();
+        openConfirmModal('Remove this office expense? This cannot be undone.', function(){
+          state.officeExpenses = (state.officeExpenses||[]).filter(function(p){ return p.id!==editId; });
+          renderView(currentView);
+          persist('Expense removed.');
+        });
+      });
+    }
     document.getElementById('officeexp-form').addEventListener('submit', function(e){
       e.preventDefault();
       var amount = parseFloat(document.getElementById('officeexp-amount').value);
@@ -4927,10 +5053,14 @@ break;case"<bookViews":;case"<bookViews>":;case"</bookViews>":break;case"<workbo
       if(pm.error){ toast(pm.error, true); return; }
       var paid = document.getElementById('officeexp-paid').checked;
       state.officeExpenses = state.officeExpenses || [];
-      state.officeExpenses.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, paid:paid, method:pm.method, checkDate:pm.checkDate });
+      if(isEdit){
+        editRec.account=account; editRec.amount=amount; editRec.date=date; editRec.payee=payee; editRec.reason=reason; editRec.paid=paid; editRec.method=pm.method; editRec.checkDate=pm.checkDate;
+      } else {
+        state.officeExpenses.push({ id:uid(), account:account, amount:amount, date:date, payee:payee, reason:reason, paid:paid, method:pm.method, checkDate:pm.checkDate });
+      }
       closeModal();
       renderView(currentView);
-      persist('Office expense logged.');
+      persist(isEdit ? 'Expense updated.' : 'Office expense logged.');
     });
     setTimeout(function(){ var f = document.getElementById('officeexp-amount'); if(f) f.focus(); },10);
   }
